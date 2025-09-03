@@ -133,6 +133,8 @@ class FinancialDataChat:
         print("  - What are the financial recommendations?")
         print("  - Give me a trading summary")
         print("  - What is the market sentiment?")
+        print("  - Analyze the market trends")
+        print("  - What are the key financial insights?")
         
         # Initialize output generator for chat
         self.output_generator = FinalOutputGenerator()
@@ -140,7 +142,12 @@ class FinancialDataChat:
             print("❌ Failed to load index and model for chat")
             return
         
-        print("\n✅ Chat system ready! Ask your questions...")
+        print("\n✅ Chat system ready with Nova Pro integration!")
+        print("Your questions will be analyzed using:")
+        print("  - FAISS vector search for context retrieval")
+        print("  - Nova Pro AI model for intelligent analysis")
+        print("  - Comprehensive financial insights generation")
+        print("\nAsk your questions...")
         
         while True:
             try:
@@ -218,7 +225,8 @@ def main():
     print("=" * 60)
     print("FINANCIAL DATA CHAT SYSTEM")
     print("=" * 60)
-    print("Complete FAISS-based Q&A system for Apple trading data")
+    print("Complete FAISS-based Q&A system with Nova Pro AI integration")
+    print("for intelligent Apple trading data analysis")
     print("=" * 60)
     
     # Initialize chat system
