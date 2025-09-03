@@ -19,19 +19,12 @@ class DataLoader:
     def load_excel_data(self, excel_path: str, sheet_name: str = 'Historical_Data') -> bool:
         """Load Excel file and extract trading data"""
         try:
-            print(f"Loading Excel file: {excel_path}")
-            
             if not os.path.exists(excel_path):
                 print(f"Error: Excel file not found: {excel_path}")
                 return False
             
             # Read Excel file
             self.excel_data = pd.read_excel(excel_path, sheet_name=sheet_name, index_col=0)
-            
-            print(f"Excel data loaded successfully!")
-            print(f"Shape: {self.excel_data.shape}")
-            print(f"Columns: {list(self.excel_data.columns)}")
-            print(f"Date range: {self.excel_data.index[0]} to {self.excel_data.index[-1]}")
             
             # Extract key values
             self.extracted_values['excel'] = {
@@ -58,15 +51,11 @@ class DataLoader:
             
         except Exception as e:
             print(f"Error loading Excel data: {e}")
-            import traceback
-            traceback.print_exc()
             return False
     
     def load_json_data(self, json_path: str) -> bool:
         """Load JSON analysis file and extract values"""
         try:
-            print(f"Loading JSON analysis: {json_path}")
-            
             if not os.path.exists(json_path):
                 print(f"Error: JSON file not found: {json_path}")
                 return False
@@ -74,9 +63,6 @@ class DataLoader:
             # Read JSON file
             with open(json_path, 'r', encoding='utf-8') as file:
                 self.json_data = json.load(file)
-            
-            print(f"JSON analysis loaded successfully!")
-            print(f"Keys: {list(self.json_data.keys())}")
             
             # Extract key values
             self.extracted_values['json'] = {
@@ -107,8 +93,6 @@ class DataLoader:
             
         except Exception as e:
             print(f"Error loading JSON data: {e}")
-            import traceback
-            traceback.print_exc()
             return False
     
     def get_extracted_values(self) -> Dict[str, Any]:
@@ -124,12 +108,6 @@ class DataLoader:
         if 'excel' in self.extracted_values:
             excel = self.extracted_values['excel']
             print("Excel Trading Data:")
-            print(f"  Shape: {excel['shape']}")
-            print(f"  Columns: {', '.join(excel['columns'])}")
-            print(f"  Date Range: {excel['date_range']}")
-            print(f"  Current Price: ${excel['current_price']:.2f}")
-            print(f"  Current Volume: {excel['current_volume']:,}")
-            print(f"  Price Range: ${excel['price_range']['min']:.2f} - ${excel['price_range']['max']:.2f}")
             
             if 'sma_20' in excel:
                 print(f"  20-day SMA: ${excel['sma_20']:.2f}")
@@ -141,11 +119,7 @@ class DataLoader:
         if 'json' in self.extracted_values:
             json_data = self.extracted_values['json']
             print("\nJSON Analysis Data:")
-            print(f"  Total Files Analyzed: {json_data['total_files_analyzed']}")
-            print(f"  Analysis Type: {json_data['analysis_type']}")
-            print(f"  Timestamp: {json_data['timestamp']}")
-            print(f"  Detailed Results: {json_data['detailed_results_count']}")
-            print(f"  Recommendations: {json_data['recommendations_count']}")
+            
         
         print("=" * 60)
 
@@ -170,7 +144,7 @@ def main():
     json_success = loader.load_json_data(json_path)
     
     if excel_success and json_success:
-        print("\n✅ All data loaded successfully!")
+        print("All data loaded successfully!")
         
         # Print summary
         loader.print_summary()
@@ -183,11 +157,11 @@ def main():
         with open('step1_extracted_values.pkl', 'wb') as f:
             pickle.dump(extracted_values, f)
         
-        print(f"\nExtracted values saved to: step1_extracted_values.pkl")
+        print(f"Extracted values saved to: step1_extracted_values.pkl")
         print("Ready for Step 2: Building FAISS index")
         
     else:
-        print("\n❌ Data loading failed. Please check file paths and formats.")
+        print("Data loading failed. Please check file paths and formats.")
 
 if __name__ == "__main__":
     main()

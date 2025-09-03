@@ -28,8 +28,6 @@ class FAISSIndexBuilder:
     def load_step1_data(self) -> bool:
         """Load data from Step 1"""
         try:
-            print("Loading data from Step 1...")
-            
             # Load extracted values
             if not os.path.exists('step1_extracted_values.pkl'):
                 print("Error: step1_extracted_values.pkl not found. Please run Step 1 first.")
@@ -38,42 +36,32 @@ class FAISSIndexBuilder:
             with open('step1_extracted_values.pkl', 'rb') as f:
                 extracted_values = pickle.load(f)
             
-            print("Step 1 data loaded successfully!")
-            
             # Load original data files
             excel_path = "data/Apple_Trading_Data_20250902_104928.xlsx"
             json_path = "financial_analysis_20250902_122854.json"
             
             # Load Excel data
             self.excel_data = pd.read_excel(excel_path, sheet_name='Historical_Data', index_col=0)
-            print(f"Excel data loaded: {self.excel_data.shape}")
             
             # Load JSON data
             with open(json_path, 'r', encoding='utf-8') as f:
                 self.json_data = json.load(f)
-            print(f"JSON data loaded with keys: {list(self.json_data.keys())}")
             
             return True
             
         except Exception as e:
             print(f"Error loading Step 1 data: {e}")
-            import traceback
-            traceback.print_exc()
             return False
     
     def load_sentence_transformer(self) -> bool:
         """Load the sentence transformer model"""
         try:
-            print(f"Loading sentence transformer model: {self.model_name}")
             self.model = SentenceTransformer(self.model_name)
-            print("Model loaded successfully")
             return True
         except Exception as e:
             print(f"Error loading model: {e}")
-            print("Falling back to default model...")
             try:
                 self.model = SentenceTransformer('all-MiniLM-L6-v2')
-                print("Default model loaded successfully")
                 return True
             except Exception as e2:
                 print(f"Failed to load any model: {e2}")
@@ -84,8 +72,6 @@ class FAISSIndexBuilder:
         chunks = []
         
         try:
-            print("Creating Excel data chunks...")
-            
             # Summary statistics
             summary = f"""
             Apple Trading Data Summary:
@@ -136,7 +122,6 @@ class FAISSIndexBuilder:
             """
             chunks.append(price_analysis)
             
-            print(f"Created {len(chunks)} Excel chunks")
             return chunks
             
         except Exception as e:
@@ -148,8 +133,6 @@ class FAISSIndexBuilder:
         chunks = []
         
         try:
-            print("Creating JSON analysis chunks...")
-            
             # Detailed results
             if 'detailed_results' in self.json_data:
                 for file_key, file_data in self.json_data['detailed_results'].items():
@@ -190,7 +173,6 @@ class FAISSIndexBuilder:
                 """
                 chunks.append(chunk)
             
-            print(f"Created {len(chunks)} JSON chunks")
             return chunks
             
         except Exception as e:
@@ -200,31 +182,37 @@ class FAISSIndexBuilder:
     def build_index(self) -> bool:
         """Build the FAISS index"""
         try:
-            print("Building FAISS index...")
-            
             # Load model
             if not self.load_sentence_transformer():
                 return False
             
-            # Create chunks
-            excel_chunks = self.create_excel_chunks()
-            json_chunks = self.create_json_chunks()
-            
-            all_chunks = excel_chunks + json_chunks
-            
-            if not all_chunks:
-                print("No chunks created")
-                return False
-            
-            print(f"Total chunks to index: {len(all_chunks)}")
+            # Check if we already have documents (set externally)
+            if not self.documents:
+                # Fallback to creating chunks from local files
+                excel_chunks = self.create_excel_chunks()
+                json_chunks = self.create_json_chunks()
+                all_chunks = excel_chunks + json_chunks
+                
+                if not all_chunks:
+                    print("No chunks created")
+                    return False
+                
+                # Store documents and metadata
+                self.documents = all_chunks
+                self.document_metadata = [
+                    {
+                        'source': 'excel' if i < len(excel_chunks) else 'json_analysis',
+                        'chunk_index': i,
+                        'content_preview': chunk[:200] + '...' if len(chunk) > 200 else chunk
+                    }
+                    for i, chunk in enumerate(all_chunks)
+                ]
             
             # Create embeddings
-            print("Creating embeddings...")
-            embeddings = self.model.encode(all_chunks, show_progress_bar=True)
+            embeddings = self.model.encode(self.documents, show_progress_bar=True)
             
             # Initialize FAISS index
             dimension = embeddings.shape[1]
-            print(f"Embedding dimension: {dimension}")
             
             # Use IndexFlatIP for inner product similarity
             self.index = faiss.IndexFlatIP(dimension)
@@ -235,33 +223,17 @@ class FAISSIndexBuilder:
             # Add vectors to index
             self.index.add(embeddings.astype('float32'))
             
-            # Store documents and metadata
-            self.documents = all_chunks
-            self.document_metadata = [
-                {
-                    'source': 'excel' if i < len(excel_chunks) else 'json_analysis',
-                    'chunk_index': i,
-                    'content_preview': chunk[:200] + '...' if len(chunk) > 200 else chunk
-                }
-                for i, chunk in enumerate(all_chunks)
-            ]
-            
             print(f"FAISS index built successfully with {self.index.ntotal} vectors")
             return True
             
         except Exception as e:
             print(f"Error building index: {e}")
-            import traceback
-            traceback.print_exc()
             return False
     
     def save_index(self, index_path: str, docs_path: str):
         """Save the FAISS index and documents"""
         try:
-            print(f"Saving FAISS index to: {index_path}")
             faiss.write_index(self.index, index_path)
-            
-            print(f"Saving documents to: {docs_path}")
             with open(docs_path, 'wb') as f:
                 pickle.dump({
                     'documents': self.documents,
@@ -302,19 +274,19 @@ def main():
     
     # Build index
     if builder.build_index():
-        print("\n✅ FAISS index built successfully!")
+        print("FAISS index built successfully!")
         
         # Print index information
         builder.print_index_info()
         
         # Save index
-        builder.save_index("financial_data.index", "financial_documents.pkl")
+        builder.save_index("indices/financial_data.index", "indices/financial_documents.pkl")
         
-        print("\nIndex saved successfully!")
+        print("Index saved successfully!")
         print("Ready for Step 3: Loading index and querying")
         
     else:
-        print("\n❌ Failed to build FAISS index")
+        print("Failed to build FAISS index")
 
 if __name__ == "__main__":
     main()

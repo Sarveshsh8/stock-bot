@@ -23,8 +23,6 @@ class FAISSQueryEngine:
     def load_index(self, index_path: str, docs_path: str) -> bool:
         """Load the saved FAISS index and documents"""
         try:
-            print("Loading FAISS index...")
-            
             # Check if files exist
             if not os.path.exists(index_path):
                 print(f"Error: Index file not found: {index_path}")
@@ -36,7 +34,6 @@ class FAISSQueryEngine:
             
             # Load FAISS index
             self.index = faiss.read_index(index_path)
-            print(f"FAISS index loaded: {self.index.ntotal} vectors, dimension {self.index.d}")
             
             # Load documents
             with open(docs_path, 'rb') as f:
@@ -44,30 +41,21 @@ class FAISSQueryEngine:
                 self.documents = data['documents']
                 self.document_metadata = data['metadata']
             
-            print(f"Documents loaded: {len(self.documents)} chunks")
-            print(f"Metadata loaded: {len(self.document_metadata)} entries")
-            
             return True
             
         except Exception as e:
             print(f"Error loading index: {e}")
-            import traceback
-            traceback.print_exc()
             return False
     
     def load_sentence_transformer(self) -> bool:
         """Load the sentence transformer model"""
         try:
-            print(f"Loading sentence transformer model: {self.model_name}")
             self.model = SentenceTransformer(self.model_name)
-            print("Model loaded successfully")
             return True
         except Exception as e:
             print(f"Error loading model: {e}")
-            print("Falling back to default model...")
             try:
                 self.model = SentenceTransformer('all-MiniLM-L6-v2')
-                print("Default model loaded successfully")
                 return True
             except Exception as e2:
                 print(f"Failed to load any model: {e2}")
@@ -79,8 +67,6 @@ class FAISSQueryEngine:
             if self.index is None or self.model is None:
                 print("Index or model not initialized")
                 return []
-            
-            print(f"Searching for: '{query}'")
             
             # Encode query
             query_embedding = self.model.encode([query])
@@ -106,15 +92,11 @@ class FAISSQueryEngine:
             
         except Exception as e:
             print(f"Error searching index: {e}")
-            import traceback
-            traceback.print_exc()
             return []
     
     def retrieve_context(self, query: str, top_k: int = 3) -> str:
         """Retrieve context for a query"""
         try:
-            print(f"\nQuery: {query}")
-            
             # Search for relevant documents
             results = self.search_index(query, top_k)
             
@@ -197,9 +179,9 @@ def main():
     print("STEP 3: LOADING INDEX AND QUERYING")
     print("=" * 60)
     
-    # File paths
-    index_path = "financial_data.index"
-    docs_path = "financial_documents.pkl"
+        # File paths
+    index_path = "indices/financial_data.index"
+    docs_path = "indices/financial_documents.pkl"
     
     # Check if files exist
     if not os.path.exists(index_path):
@@ -225,7 +207,7 @@ def main():
         print("Failed to load sentence transformer model.")
         return
     
-    print("\n✅ Index and model loaded successfully!")
+    print("Index and model loaded successfully!")
     
     # Print index information
     engine.print_index_info()

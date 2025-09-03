@@ -1,14 +1,30 @@
-yfinance>=0.2.28
-pandas>=2.2.0
-xlsxwriter>=3.1.9
-openpyxl>=3.1.0
+# Stock-Bot Complete Requirements
+# All dependencies in one file for easy installation
+
+# Core web frameworks
+streamlit>=1.28.0
+flask>=2.3.3
+flask-cors>=4.0.0
+
+# AWS and cloud services
 boto3>=1.34.0
 botocore>=1.34.0
 python-dotenv>=1.0.0
-numpy>=1.24.3
-Pillow>=10.0.0
-opencv-python>=4.8.1.78
+
+# Data processing and analysis
+pandas>=2.2.0
+numpy>=1.26.0
+
+# AI and machine learning
 faiss-cpu>=1.7.4
 sentence-transformers>=2.2.2
-torch>=1.13.0
-transformers>=4.21.0
+torch>=2.1.0
+transformers>=4.35.0
+
+# Image and video processing
+Pillow>=10.0.1
+opencv-python>=4.8.1.78
+
+# Utilities
+requests>=2.27.0
+tqdm>=4.64.0

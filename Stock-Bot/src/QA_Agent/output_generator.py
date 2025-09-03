@@ -14,6 +14,10 @@ from typing import List, Dict, Any
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 from src.model.nova_pro_client import NovaProClient
+from .prompts import (
+    get_prompt, get_context_template, get_output_template, 
+    get_error_message, get_success_message, CONFIG
+)
 
 class FinalOutputGenerator:
     """Generate intelligent final output using Nova Pro model with retrieved context"""
@@ -29,15 +33,12 @@ class FinalOutputGenerator:
     def load_index_and_model(self, index_path: str, docs_path: str) -> bool:
         """Load FAISS index, sentence transformer model, and Nova Pro client"""
         try:
-            print("Loading FAISS index, sentence transformer, and Nova Pro client...")
-            
             # Load FAISS index
             if not os.path.exists(index_path):
-                print(f"Error: Index file not found: {index_path}")
+                print(get_error_message("file_not_found", file_path=index_path))
                 return False
             
             self.index = faiss.read_index(index_path)
-            print(f"FAISS index loaded: {self.index.ntotal} vectors")
             
             # Load documents
             with open(docs_path, 'rb') as f:
@@ -45,43 +46,38 @@ class FinalOutputGenerator:
                 self.documents = data['documents']
                 self.document_metadata = data['metadata']
             
-            print(f"Documents loaded: {len(self.documents)} chunks")
-            
             # Load sentence transformer
             try:
                 self.model = SentenceTransformer(self.model_name)
-                print("Sentence transformer model loaded successfully")
             except Exception as e:
-                print(f"Error loading sentence transformer: {e}")
+                print(get_error_message("loading_failed", component="sentence transformer"))
                 try:
                     self.model = SentenceTransformer('all-MiniLM-L6-v2')
-                    print("Default sentence transformer loaded successfully")
                 except Exception as e2:
-                    print(f"Failed to load sentence transformer: {e2}")
+                    print(get_error_message("loading_failed", component="default model"))
                     return False
             
             # Initialize Nova Pro client
             try:
                 self.nova_client = NovaProClient(region_name="us-east-1")
-                print("Nova Pro client initialized successfully")
             except Exception as e:
-                print(f"Error initializing Nova Pro client: {e}")
-                print("Falling back to text-only mode...")
+                print(get_error_message("nova_pro_failed"))
                 self.nova_client = None
             
             return True
             
         except Exception as e:
-            print(f"Error loading index and models: {e}")
-            import traceback
-            traceback.print_exc()
+            print(get_error_message("loading_failed", component="index and models"))
             return False
     
-    def retrieve_context(self, query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+    def retrieve_context(self, query: str, top_k: int = None) -> List[Dict[str, Any]]:
         """Retrieve relevant context for a query"""
+        if top_k is None:
+            top_k = CONFIG["default_top_k"]
+            
         try:
             if self.index is None or self.model is None:
-                print("Index or sentence transformer not initialized")
+                print(get_error_message("model_not_loaded"))
                 return []
             
             # Encode query
@@ -106,17 +102,33 @@ class FinalOutputGenerator:
             return results
             
         except Exception as e:
-            print(f"Error retrieving context: {e}")
+            print(get_error_message("loading_failed", component="context retrieval"))
             return []
+    
+    def _determine_prompt_type(self, query: str) -> str:
+        """Determine the appropriate prompt type based on the query"""
+        query_lower = query.lower()
+        
+        if any(word in query_lower for word in ['price', 'stock price', 'current price']):
+            return "stock_price_analysis"
+        elif any(word in query_lower for word in ['technical', 'indicator', 'sma', 'rsi', 'macd']):
+            return "technical_indicators"
+        elif any(word in query_lower for word in ['sentiment', 'market sentiment', 'trend']):
+            return "market_sentiment"
+        elif any(word in query_lower for word in ['recommendation', 'advice', 'investment']):
+            return "financial_recommendations"
+        elif any(word in query_lower for word in ['trading', 'summary', 'overview']):
+            return "trading_summary"
+        else:
+            return "general_analysis"
     
     def generate_final_output_with_nova(self, query: str, context_results: List[Dict[str, Any]]) -> str:
         """Generate intelligent final output using Nova Pro model"""
         try:
             if not context_results:
-                return "No relevant context found to generate output."
+                return get_error_message("context_not_found")
             
             if self.nova_client is None:
-                print("Nova Pro client not available, using fallback text generation...")
                 return self.generate_fallback_output(query, context_results)
             
             # Prepare context for Nova Pro
@@ -124,55 +136,28 @@ class FinalOutputGenerator:
             for result in context_results:
                 source = result['source']
                 score = result['score']
-                content = result['content'][:500] + "..." if len(result['content']) > 500 else result['content']
-                context_summary.append(f"[{source.upper()}, Relevance: {score:.3f}]\n{content}")
+                content = result['content'][:CONFIG["max_context_length"]] + "..." if len(result['content']) > CONFIG["max_context_length"] else result['content']
+                context_summary.append(get_context_template("source_format", 
+                    source_upper=source.upper(), score=score, content=content))
             
-            # Create comprehensive prompt for Nova Pro
-            nova_prompt = f"""
-            You are a financial analyst expert. Based on the following retrieved context, provide a comprehensive and intelligent answer to the user's question.
-
-            USER QUESTION: {query}
-
-            RETRIEVED CONTEXT:
-            {'-' * 60}
-            {chr(10).join(context_summary)}
-
-            INSTRUCTIONS:
-            1. Analyze the retrieved context carefully
-            2. Provide a comprehensive, well-structured answer
-            3. Include specific data points and insights from the context
-            4. Give actionable financial insights when possible
-            5. Use professional financial analysis language
-            6. Cite the sources of your information
-
-            Please provide your comprehensive financial analysis:
-            """
+            # Determine prompt type and get appropriate prompt
+            prompt_type = self._determine_prompt_type(query)
+            context_text = "\n".join(context_summary)
             
-            print("Sending context to Nova Pro for intelligent analysis...")
+            nova_prompt = get_prompt(prompt_type, query=query, context=context_text)
             
             # Get response from Nova Pro
             nova_response = self.nova_client.text_only_request(
                 prompt=nova_prompt,
-                max_tokens=1500,
-                temperature=0.7,
-                top_p=0.9
+                max_tokens=CONFIG["max_tokens"],
+                temperature=CONFIG["temperature"],
+                top_p=CONFIG["top_p"]
             )
             
             # Format the final output
-            final_output = f"""
-            INTELLIGENT ANALYSIS BY NOVA PRO
-            {'=' * 60}
-            
-            QUESTION: {query}
-            
-            {'=' * 60}
-            
-            {nova_response}
-            
-            {'=' * 60}
-            
-            SOURCES USED:
-            """
+            separator = "=" * CONFIG["separator_length"]
+            final_output = get_output_template("nova_pro_header", 
+                separator=separator, query=query, response=nova_response)
             
             # Add source information
             for i, result in enumerate(context_results):
@@ -180,14 +165,13 @@ class FinalOutputGenerator:
                 score = result['score']
                 final_output += f"\n{i+1}. {source.upper()} (Relevance: {score:.3f})"
             
-            final_output += f"\n\nTotal sources analyzed: {len(context_results)}"
-            final_output += f"\nMost relevant source score: {context_results[0]['score']:.3f}"
+            final_output += get_output_template("source_summary", 
+                count=len(context_results), score=context_results[0]['score'])
             
             return final_output
             
         except Exception as e:
-            print(f"Error generating Nova Pro output: {e}")
-            print("Falling back to text generation...")
+            print(get_error_message("nova_pro_failed"))
             return self.generate_fallback_output(query, context_results)
     
     def generate_fallback_output(self, query: str, context_results: List[Dict[str, Any]]) -> str:
@@ -199,20 +183,16 @@ class FinalOutputGenerator:
                 source = result['source']
                 score = result['score']
                 content = result['content'][:300] + "..." if len(result['content']) > 300 else result['content']
-                context_summary.append(f"[{source.upper()}, Relevance: {score:.3f}]\n{content}")
+                context_summary.append(get_context_template("source_format", 
+                    source_upper=source.upper(), score=score, content=content))
             
             # Generate comprehensive answer
-            final_output = f"""
-            FINAL OUTPUT FOR: "{query}"
-            {'=' * 60}
+            separator = "=" * CONFIG["separator_length"]
+            context_separator = "-" * 40
+            context_text = "\n".join(context_summary)
             
-            RETRIEVED CONTEXT:
-            {'-' * 40}
-            {chr(10).join(context_summary)}
-            
-            COMPREHENSIVE ANSWER:
-            {'-' * 40}
-            """
+            final_output = get_output_template("fallback_header", 
+                query=query, separator=separator, context_separator=context_separator, context=context_text)
             
             # Add source-specific insights
             excel_insights = []
@@ -256,59 +236,42 @@ class FinalOutputGenerator:
             return final_output
             
         except Exception as e:
-            print(f"Error generating fallback output: {e}")
-            return f"Error generating output: {str(e)}"
+            return get_error_message("loading_failed", component="fallback output generation")
     
     def process_query(self, query: str) -> str:
         """Process a query through the complete intelligent pipeline"""
         try:
-            print(f"\nProcessing query: '{query}'")
-            print("-" * 50)
-            
             # Step 1: Retrieve context
-            print("Step 1: Retrieving relevant context...")
-            context_results = self.retrieve_context(query, top_k=3)
+            context_results = self.retrieve_context(query, top_k=CONFIG["default_top_k"])
             
             if not context_results:
-                return "No relevant context found for your query."
-            
-            print(f"Retrieved {len(context_results)} relevant context pieces")
+                return get_error_message("context_not_found")
             
             # Step 2: Generate intelligent output with Nova Pro
-            print("Step 2: Generating intelligent output with Nova Pro...")
             final_output = self.generate_final_output_with_nova(query, context_results)
             
-            print("Intelligent output generated successfully!")
             return final_output
             
         except Exception as e:
-            print(f"Error processing query: {e}")
-            return f"Error processing query: {str(e)}"
+            return get_error_message("loading_failed", component="query processing")
     
     def interactive_session(self):
         """Run interactive session for intelligent output generation"""
-        print("=" * 60)
-        print("INTELLIGENT OUTPUT GENERATOR WITH NOVA PRO")
-        print("=" * 60)
-        print("Complete pipeline: Query → Context Retrieval → Nova Pro Analysis → Intelligent Output")
-        print("Type 'quit' to exit")
-        print("\nExample queries:")
-        print("  - What is the current Apple stock price?")
-        print("  - Show me technical indicators")
-        print("  - What are the financial recommendations?")
-        print("  - Give me a trading summary")
-        print("  - What is the market sentiment?")
+        from .prompts import INTERACTIVE_PROMPTS
+        
+        for query in INTERACTIVE_PROMPTS["example_queries"]:
+            print(f"  - {query}")
         
         if self.nova_client:
-            print("\n✅ Nova Pro integration: ACTIVE - Intelligent analysis enabled")
+            print("\nNova Pro integration: ACTIVE - Intelligent analysis enabled")
         else:
-            print("\n⚠️  Nova Pro integration: INACTIVE - Using fallback text generation")
+            print("\nNova Pro integration: INACTIVE - Using fallback text generation")
         
         while True:
             try:
                 query = input("\nYour query: ").strip()
                 
-                if query.lower() in ['quit', 'exit', 'q']:
+                if query.lower() in INTERACTIVE_PROMPTS["quit_commands"]:
                     print("Goodbye!")
                     break
                 
@@ -322,27 +285,24 @@ class FinalOutputGenerator:
                 print("\n\nGoodbye!")
                 break
             except Exception as e:
-                print(f"Error: {e}")
+                print(INTERACTIVE_PROMPTS["error_message"])
 
 def main():
     """Main function for intelligent output generation"""
     
-    print("=" * 60)
-    print("STEP 4: INTELLIGENT OUTPUT GENERATION WITH NOVA PRO")
-    print("=" * 60)
     
     # File paths
-    index_path = "financial_data.index"
-    docs_path = "financial_documents.pkl"
+    index_path = "indices/financial_data.index"
+    docs_path = "indices/financial_documents.pkl"
     
     # Check if files exist
     if not os.path.exists(index_path):
-        print(f"Error: Index file not found: {index_path}")
+        print(get_error_message("index_not_found"))
         print("Please run Step 2 first to build the index.")
         return
     
     if not os.path.exists(docs_path):
-        print(f"Error: Documents file not found: {docs_path}")
+        print(get_error_message("file_not_found", file_path=docs_path))
         print("Please run Step 2 first to build the index.")
         return
     
@@ -354,7 +314,7 @@ def main():
         print("Failed to load index and models. Please check if previous steps completed successfully.")
         return
     
-    print("\n✅ Index and models loaded successfully!")
+    print(get_success_message("models_loaded"))
     print("Ready for intelligent output generation!")
     
     # Run interactive session

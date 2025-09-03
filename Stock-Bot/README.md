@@ -1,254 +1,334 @@
-# Comprehensive Apple Trading Data Analysis System
+# Financial Data Analysis System
 
-A modular system that reads files from S3, analyzes them using AWS Bedrock Nova Pro, and generates comprehensive financial insights for Apple trading data.
+A comprehensive financial data analysis system with S3 integration, FAISS indexing, and Nova Pro AI-powered QA capabilities.
 
-## System Architecture
+## 🏗️ System Architecture
 
 ```
-v2/
-├── run_comprehensive_analysis.py  # Main execution script (outside)
-├── requirements.txt               # Dependencies
-├── README.md                     # This documentation
-├── data/                         # Local data files
-└── src/                          # Source code
-    ├── aws_code/                 # S3 operations
-    │   ├── upload_to_s3.py
-    │   └── read_from_s3.py
-    ├── analysis_orchestrator.py  # Main orchestrator
-    ├── nova_pro_client.py        # Nova Pro client
-    └── prompts.py                # Custom analysis prompts
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Local Files   │    │   S3 Bucket     │    │   Nova Pro AI   │
+│                 │    │                 │    │                 │
+│ - Excel Data    │───▶│ - excel/        │───▶│ - Video Analysis│
+│ - Video Files   │    │ - video/        │    │ - Image Analysis│
+│ - Image Files   │    │ - image/        │    │ - Text Analysis │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │   FAISS Index   │
+                       │                 │
+                       │ - Vector Search │
+                       │ - Context Retrieval│
+                       └─────────────────┘
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │   QA System     │
+                       │                 │
+                       │ - Question Input│
+                       │ - Intelligent   │
+                       │   Responses     │
+                       └─────────────────┘
 ```
 
-## Features
+## 🚀 Quick Start
 
-- **Multimodal Analysis**: Excel, video, image, and data files
-- **S3 Integration**: Direct reading from S3 buckets
-- **Nova Pro AI**: Advanced AI analysis using AWS Bedrock
-- **Custom Prompts**: Specialized financial analysis prompts
-- **Financial Analyst Focus**: Stock market analysis, technical indicators, market sentiment
-- **Comprehensive Output**: Combined insights from all data sources
-- **Modular Design**: Clean separation of concerns
-
-## Prerequisites
-
-1. **AWS Account** with Bedrock access
-2. **S3 Bucket** for storing files
-3. **Python 3.8+** with required packages
-4. **Environment Variables** configured
-
-## Setup
-
-### 1. Install Dependencies
+### 1. Environment Setup
 
 ```bash
-cd v2
-pip install -r requirements.txt
+# Clone the repository
+git clone <repository-url>
+cd Stock-Bot
+
+# Set up virtual environment (Recommended)
+python3 -m venv venv
+source venv/bin/activate
+# OR use the provided script
+source activate_venv.sh
+
+# Install dependencies
+pip install -r requirements_venv.txt
+
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your AWS credentials and S3 bucket name
 ```
 
-### 2. Configure Environment Variables
+### 2. Virtual Environment Benefits
 
-Create a `.env` file in the `v2` directory:
+Using a virtual environment provides several advantages:
+- **Isolated dependencies**: Prevents conflicts with system Python packages
+- **Clean PATH**: Resolves streamlit command issues on macOS
+- **Reproducible environment**: Same setup across different machines
+- **Easy cleanup**: Simply delete the `venv` folder to start fresh
+
+### 3. Environment Variables (.env)
 
 ```bash
-# AWS Configuration
-S3_BUCKET_NAME=your-s3-bucket-name
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your-access-key
-AWS_SECRET_ACCESS_KEY=your-secret-key
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_DEFAULT_REGION=us-east-1
+S3_BUCKET_NAME=your-bucket-name
 ```
 
-### 3. AWS Permissions
-
-Ensure your AWS credentials have:
-- `s3:GetObject`, `s3:ListBucket` (for S3 reading)
-- `bedrock:InvokeModel` (for Nova Pro)
-
-## File Organization in S3
-
-The system expects files organized in S3 with this structure:
+## 📁 File Structure
 
 ```
-apple_trading_data/
-├── spreadsheets/           # Excel/CSV files
-│   └── timestamp_filename.xlsx
-├── videos/                 # Video files
-│   └── timestamp_filename.mp4
-├── images/                 # Chart/images
-│   └── timestamp_filename.png
-└── other/                  # Other file types
+Stock-Bot/
+├── app.py                    # Flask REST API
+├── streamlit_app.py          # Streamlit web interface
+├── main_upload.py            # S3 upload script
+├── main_qa.py               # Command-line QA script
+├── requirements_api.txt      # API dependencies
+├── requirements_streamlit.txt # Streamlit dependencies
+├── src/
+│   ├── QA_Agent/            # FAISS and QA components
+│   ├── aws_code/            # S3 operations
+│   └── model/               # Nova Pro integration
+└── data/                    # Local data files
 ```
 
-## Usage
+## 🔧 Usage Options
 
-### Quick Start
+**Important**: Always activate the virtual environment first:
+```bash
+source venv/bin/activate
+# OR
+source activate_venv.sh
+```
+
+### Option 1: Command Line Interface
+
+#### Upload Documents to S3
 
 ```bash
-cd v2
-python3 run_comprehensive_analysis.py
+python3 main_upload.py
 ```
 
-Choose option 1 for comprehensive financial analysis or option 2 for quick connectivity test.
+#### Run QA System
 
-### Programmatic Usage
-
-```python
-from src.model.analysis_orchestrator import AnalysisOrchestrator
-
-# Initialize orchestrator
-orchestrator = AnalysisOrchestrator(
-    bucket_name="your-bucket",
-    region="us-east-1"
-)
-
-# Run complete analysis
-results = orchestrator.run_complete_analysis(
-    prefix="apple_trading_data/",
-    max_tokens=1500,
-    save_output=True
-)
+```bash
+python3 main_qa.py
 ```
 
-### Individual Components
+### Option 2: REST API
 
-#### Nova Pro Client
+#### Start API Server
 
-```python
-from src.model.nova_pro_client import NovaProClient
-
-client = NovaProClient()
-
-# Analyze specific content
-result = client.analyze_apple_trading_data("path/to/file.xlsx", "data")
+```bash
+python3 app.py
 ```
 
-#### S3 Operations
+#### API Endpoints
 
-```python
-from src.aws_code.read_from_s3 import read_file_from_s3
+- `GET /health` - Health check
+- `POST /upload` - Upload document to S3
+- `POST /analyze` - Analyze documents and build index
+- `POST /qa` - Ask questions
+- `GET /status` - System status
 
-# Read file from S3
-content = read_file_from_s3("bucket-name", "s3-key")
+#### Test API
+
+```bash
+python3 test_api.py
 ```
 
-## Analysis Focus
+### Option 3: Streamlit Web Interface
 
-### **Financial Analyst Role**
-- Focus on financial metrics and performance
-- Investment recommendations
-- Risk assessment
-- Technical indicators and chart patterns
-- Market sentiment analysis
+#### Start Streamlit App
 
-## Output Structure
-
-The system generates comprehensive financial output with:
-
-```json
-{
-  "analysis_metadata": {
-    "timestamp": "2025-01-02T10:30:00",
-    "total_files_analyzed": 5,
-    "categories_analyzed": ["trading_data", "video_content", "chart_analysis"],
-    "analysis_type": "Financial Analyst"
-  },
-  "category_summaries": {
-    "trading_data": {
-      "summary": "Analyzed 2 trading data files",
-      "key_findings": "Financial metrics and performance indicators"
-    }
-  },
-  "overall_insights": {
-    "total_files": 5,
-    "success_rate": "100.0%",
-    "analysis_coverage": "Comprehensive financial analysis across multiple formats"
-  },
-  "detailed_results": {
-    "file1.xlsx": {
-      "analysis": "Detailed analysis results...",
-      "timestamp": "2025-01-02T10:30:00"
-    }
-  },
-  "financial_recommendations": [
-    "Review trading data analysis for investment decisions",
-    "Consider video content insights for market sentiment"
-  ]
-}
+```bash
+span
 ```
 
-## Customization
+#### Features
 
-### Adding New Content Types
+- Web-based interface
+- System initialization
+- Document analysis
+- Interactive QA
+- Example questions
 
-1. Add file extensions to `_detect_file_type()` method in orchestrator
-2. Create appropriate analysis prompts in `prompts.py`
-3. Update analysis methods if needed
+## 📊 API Examples
 
-### Custom Prompts
+### Upload Document
 
-Modify `src/prompts.py` to add:
-- New financial analysis prompts
-- Content-specific analysis prompts
-- Apple-specific prompts
+```bash
+curl -X POST http://localhost:5000/upload \
+  -H "Content-Type: application/json" \
+  -d '{
+    "file_path": "data/Apple_Trading_Data_20250902_104928.xlsx",
+    "file_type": "excel"
+  }'
+```
 
-## Workflow
+### Analyze Documents
 
-1. **File Discovery**: Scan S3 bucket for analyzable files
-2. **Categorization**: Organize files by type and content
-3. **Analysis**: Process each file with Nova Pro using financial analysis prompts
-4. **Synthesis**: Combine all analysis results
-5. **Output Generation**: Create comprehensive financial report
-6. **Storage**: Save results to JSON file
+```bash
+curl -X POST http://localhost:5000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "excel_key": "excel/Apple_Trading_Data_20250902_104928.xlsx",
+    "video_key": "video/appleq1.mp4",
+    "image_keys": ["image/test_red_square.png"]
+  }'
+```
 
-## Troubleshooting
+### Ask Question
+
+```bash
+curl -X POST http://localhost:5000/qa \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "What is the current Apple stock price?"
+  }'
+```
+
+## 🔍 System Features
+
+### 1. Document Processing
+
+- **Excel Files**: Trading data, financial metrics
+- **Video Files**: Financial presentations, market analysis
+- **Image Files**: Charts, graphs, financial documents
+
+### 2. AI Analysis
+
+- **Nova Pro Integration**: Multimodal analysis
+- **Context-Aware**: Intelligent prompt selection
+- **Financial Focus**: Specialized for financial data
+
+### 3. Search & Retrieval
+
+- **FAISS Indexing**: Fast vector similarity search
+- **Semantic Search**: Meaning-based retrieval
+- **Context Retrieval**: Relevant information extraction
+
+### 4. QA System
+
+- **Intelligent Responses**: AI-generated answers
+- **Source Citation**: References to original data
+- **Interactive Interface**: Multiple input methods
+
+## 🛠️ Development
+
+### Adding New Data Sources
+
+1. Update `src/aws_code/read_from_s3.py`
+2. Add new file type handling
+3. Update analysis orchestrator
+4. Modify FAISS data creation
+
+### Customizing Prompts
+
+Edit `src/QA_Agent/prompts.py` to modify:
+
+- System prompts
+- Analysis instructions
+- Output templates
+- Error messages
+
+### Extending Analysis
+
+1. Add new analysis methods to `AnalysisOrchestrator`
+2. Update FAISS indexing logic
+3. Modify output generation
+
+## 🚀 Deployment
+
+### Docker (Recommended)
+
+```bash
+# Build image
+docker build -t financial-qa-system .
+
+# Run container
+docker run -p 5000:5000 -p 8501:8501 financial-qa-system
+```
+
+### EKS Deployment
+
+1. Create Kubernetes manifests
+2. Deploy to EKS cluster
+3. Configure load balancing
+4. Set up monitoring
+
+## 📈 Performance
+
+### Optimization Tips
+
+- Use GPU for FAISS indexing (if available)
+- Implement caching for repeated queries
+- Batch process multiple documents
+- Optimize S3 transfer speeds
+
+### Monitoring
+
+- API response times
+- FAISS index performance
+- Nova Pro API usage
+- S3 transfer metrics
+
+## 🔒 Security
+
+### Best Practices
+
+- Use IAM roles for AWS access
+- Implement API authentication
+- Secure environment variables
+- Monitor API usage
+
+### Access Control
+
+- S3 bucket policies
+- API rate limiting
+- User authentication
+- Audit logging
+
+## 🆘 Troubleshooting
 
 ### Common Issues
 
-1. **S3 Access Denied**
-   - Check AWS credentials and permissions
-   - Verify bucket name and region
-
-2. **Bedrock Access Denied**
-   - Ensure Bedrock is enabled in your region
-   - Check IAM permissions for `bedrock:InvokeModel`
-
-3. **Import Errors**
-   - Verify Python path includes `src` directory
-   - Check all dependencies are installed
-
-4. **File Type Not Supported**
-   - Add new file extensions to detection methods
-   - Create appropriate analysis prompts
+1. **S3 Connection Error**: Check AWS credentials
+2. **FAISS Index Error**: Verify data format
+3. **Nova Pro Error**: Check API limits and ARN
+4. **Memory Issues**: Reduce batch sizes
 
 ### Debug Mode
 
-Enable detailed logging by modifying the orchestrator:
-
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
+```bash
+# Enable debug logging
+export DEBUG=1
+python3 app.py
 ```
 
-## Performance Tips
+## 📚 Additional Resources
 
-1. **Batch Processing**: Use `batch_analyze()` for multiple files
-2. **Token Limits**: Adjust `max_tokens` based on content complexity
-3. **Caching**: Results are cached during analysis session
+- [FAISS Documentation](https://github.com/facebookresearch/faiss)
+- [AWS Nova Pro Guide](https://docs.aws.amazon.com/bedrock/)
+- [Streamlit Documentation](https://docs.streamlit.io/)
+- [Flask Documentation](https://flask.palletsprojects.com/)
 
-## Future Enhancements
+## 🤝 Contributing
 
-- **Real-time Analysis**: Streaming analysis of live data
-- **Advanced Visualization**: Charts and graphs for insights
-- **API Integration**: REST API for external access
-- **Machine Learning**: Custom ML models for specific analysis
+1. Fork the repository
+2. Create feature branch
+3. Make changes
+4. Add tests
+5. Submit pull request
 
-## Support
+## 📄 License
 
-For issues or questions:
-1. Check the troubleshooting section
-2. Review AWS service status
-3. Verify environment configuration
-4. Check file permissions and formats
+This project is licensed under the MIT License - see the LICENSE file for details.
 
-## License
+## 🆘 Support
 
-This project is for educational and research purposes. Ensure compliance with AWS terms of service and data privacy regulations.
+For support and questions:
+
+- Create an issue in the repository
+- Check the troubleshooting section
+- Review the documentation
+
+---
+
+**Built with ❤️ using Streamlit, FAISS, and AWS Nova Pro**
