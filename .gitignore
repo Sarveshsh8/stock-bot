@@ -27,7 +27,6 @@ wheels/
 *.egg
 
 # Data files (generated during runtime)
-data/
 *.xlsx
 *.png
 *.jpg
