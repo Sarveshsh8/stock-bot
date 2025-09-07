@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jupyter-lab-service
+  namespace: stock-bot
+  labels:
+    app: jupyter-lab
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8888
+    protocol: TCP
+    name: jupyter
+  selector:
+    app: jupyter-stock-bot
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jupyter-lab-cluster
+  namespace: stock-bot
+  labels:
+    app: jupyter-lab
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8888
+    targetPort: 8888
+    protocol: TCP
+    name: jupyter
+  selector:
+    app: jupyter-stock-bot

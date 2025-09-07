@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: stock-bot-service
+  namespace: stock-bot
+  labels:
+    app: stock-bot
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8501
+    targetPort: 8501
+    protocol: TCP
+    name: streamlit
+  - port: 5001
+    targetPort: 5001
+    protocol: TCP
+    name: flask
+  selector:
+    app: stock-bot
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stock-bot-streamlit
+  namespace: stock-bot
+  labels:
+    app: stock-bot
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8501
+    protocol: TCP
+    name: streamlit
+  selector:
+    app: stock-bot
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: stock-bot-flask
+  namespace: stock-bot
+  labels:
+    app: stock-bot
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 5001
+    protocol: TCP
+    name: flask
+  selector:
+    app: stock-bot

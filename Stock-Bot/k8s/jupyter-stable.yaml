@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jupyter-stable-pv
+  namespace: stock-bot
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: hostpath
+  hostPath:
+    path: /tmp/jupyter-data
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jupyter-stable-pvc
+  namespace: stock-bot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: hostpath
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyter-stable
+  namespace: stock-bot
+  labels:
+    app: jupyter-stable
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jupyter-stable
+  template:
+    metadata:
+      labels:
+        app: jupyter-stable
+    spec:
+      initContainers:
+      - name: fix-permissions
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          mkdir -p /home/jovyan/work
+          chown -R 1000:100 /home/jovyan/work
+          chmod -R 755 /home/jovyan/work
+        volumeMounts:
+        - name: persistent-storage
+          mountPath: /home/jovyan/work
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: jupyter
+        image: jupyter/minimal-notebook:latest
+        ports:
+        - containerPort: 8888
+        env:
+        - name: JUPYTER_ENABLE_LAB
+          value: "yes"
+        - name: JUPYTER_TOKEN
+          value: "stock-bot-jupyter-2024"
+        - name: PYTHONPATH
+          value: "/home/jovyan/work:/home/jovyan/work/src"
+        - name: JUPYTER_CONFIG_DIR
+          value: "/home/jovyan/.jupyter"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: persistent-storage
+          mountPath: /home/jovyan/work
+        command: ["jupyter"]
+        args: 
+        - "lab"
+        - "--ip=0.0.0.0"
+        - "--port=8888"
+        - "--no-browser"
+        - "--allow-root"
+        - "--NotebookApp.token=stock-bot-jupyter-2024"
+        - "--NotebookApp.password="
+        - "--NotebookApp.disable_check_xsrf=True"
+        - "--NotebookApp.shutdown_no_activity_timeout=3600"
+        - "--NotebookApp.tornado_settings={'shutdown_timeout': 3600}"
+        - "--ServerApp.shutdown_no_activity_timeout=3600"
+        - "--ServerApp.tornado_settings={'shutdown_timeout': 3600}"
+        livenessProbe:
+          httpGet:
+            path: /lab
+            port: 8888
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /lab
+            port: 8888
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: persistent-storage
+        persistentVolumeClaim:
+          claimName: jupyter-stable-pvc
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jupyter-stable-service
+  namespace: stock-bot
+spec:
+  selector:
+    app: jupyter-stable
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8888
+  type: LoadBalancer

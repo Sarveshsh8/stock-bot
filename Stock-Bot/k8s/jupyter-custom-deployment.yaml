@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyter-stock-bot
+  namespace: stock-bot
+  labels:
+    app: jupyter-stock-bot
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jupyter-stock-bot
+  template:
+    metadata:
+      labels:
+        app: jupyter-stock-bot
+    spec:
+      containers:
+      - name: jupyter-stock-bot
+        image: 295386645352.dkr.ecr.us-east-1.amazonaws.com/stock-bot-jupyter:latest
+        ports:
+        - containerPort: 8888
+          name: jupyter
+        env:
+        - name: JUPYTER_ENABLE_LAB
+          value: "yes"
+        - name: JUPYTER_TOKEN
+          value: "stock-bot-jupyter-2024"
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: stock-bot-secrets
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stock-bot-secrets
+              key: AWS_SECRET_ACCESS_KEY
+        - name: S3_BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: stock-bot-secrets
+              key: S3_BUCKET_NAME
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: stock-bot-config
+              key: AWS_DEFAULT_REGION
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        - name: PYTHONPATH
+          value: "/home/jovyan/work:/home/jovyan/work/src"
+        volumeMounts:
+        - name: notebook-storage
+          mountPath: /home/jovyan/work
+        - name: data-storage
+          mountPath: /home/jovyan/data
+        - name: indices-storage
+          mountPath: /home/jovyan/indices
+        - name: logs-storage
+          mountPath: /home/jovyan/logs
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /lab
+            port: 8888
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /lab
+            port: 8888
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      volumes:
+      - name: notebook-storage
+        persistentVolumeClaim:
+          claimName: jupyter-pvc
+      - name: data-storage
+        persistentVolumeClaim:
+          claimName: stock-bot-pvc
+      - name: indices-storage
+        persistentVolumeClaim:
+          claimName: stock-bot-pvc
+      - name: logs-storage
+        persistentVolumeClaim:
+          claimName: stock-bot-pvc
+      imagePullSecrets:
+      - name: ecr-secret

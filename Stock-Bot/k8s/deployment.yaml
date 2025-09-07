@@ -1,0 +1,103 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stock-bot-app
+  namespace: stock-bot
+  labels:
+    app: stock-bot
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stock-bot
+  template:
+    metadata:
+      labels:
+        app: stock-bot
+    spec:
+      containers:
+      - name: stock-bot
+        image: 295386645352.dkr.ecr.us-east-1.amazonaws.com/stock-bot:latest
+        ports:
+        - containerPort: 8501
+          name: streamlit
+        - containerPort: 5001
+          name: flask
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: stock-bot-secrets
+              key: AWS_ACCESS_KEY_ID
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: stock-bot-secrets
+              key: AWS_SECRET_ACCESS_KEY
+        - name: S3_BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: stock-bot-secrets
+              key: S3_BUCKET_NAME
+        - name: AWS_DEFAULT_REGION
+          valueFrom:
+            configMapKeyRef:
+              name: stock-bot-config
+              key: AWS_DEFAULT_REGION
+        - name: PYTHONUNBUFFERED
+          valueFrom:
+            configMapKeyRef:
+              name: stock-bot-config
+              key: PYTHONUNBUFFERED
+        - name: STREAMLIT_SERVER_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: stock-bot-config
+              key: STREAMLIT_SERVER_PORT
+        - name: FLASK_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: stock-bot-config
+              key: FLASK_PORT
+        # volumeMounts:
+        # - name: data-storage
+        #   mountPath: /app/data
+        # - name: indices-storage
+        #   mountPath: /app/indices
+        # - name: logs-storage
+        #   mountPath: /app/logs
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /_stcore/health
+            port: 8501
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      # volumes:
+      # - name: data-storage
+      #   persistentVolumeClaim:
+      #     claimName: stock-bot-pvc
+      # - name: indices-storage
+      #   persistentVolumeClaim:
+      #     claimName: stock-bot-pvc
+      # - name: logs-storage
+      #   persistentVolumeClaim:
+      #     claimName: stock-bot-pvc
+      imagePullSecrets:
+      - name: ecr-secret

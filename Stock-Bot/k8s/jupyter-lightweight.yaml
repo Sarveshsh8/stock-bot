@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyter-lightweight
+  namespace: stock-bot
+  labels:
+    app: jupyter-lightweight
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jupyter-lightweight
+  template:
+    metadata:
+      labels:
+        app: jupyter-lightweight
+    spec:
+      containers:
+      - name: jupyter
+        image: jupyter/minimal-notebook:latest
+        ports:
+        - containerPort: 8888
+        env:
+        - name: JUPYTER_ENABLE_LAB
+          value: "yes"
+        - name: JUPYTER_TOKEN
+          value: "stock-bot-jupyter-2024"
+        - name: PYTHONPATH
+          value: "/home/jovyan/work:/home/jovyan/work/src"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        volumeMounts:
+        - name: work-volume
+          mountPath: /home/jovyan/work
+        command: ["jupyter"]
+        args: ["lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=stock-bot-jupyter-2024", "--NotebookApp.password=", "--NotebookApp.disable_check_xsrf=True"]
+      volumes:
+      - name: work-volume
+        emptyDir: {}
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jupyter-lightweight-service
+  namespace: stock-bot
+spec:
+  selector:
+    app: jupyter-lightweight
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8888
+  type: LoadBalancer

@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jupyter-permissions-pv
+  namespace: stock-bot
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: hostpath
+  hostPath:
+    path: /tmp/jupyter-data
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jupyter-permissions-pvc
+  namespace: stock-bot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: hostpath
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jupyter-permissions
+  namespace: stock-bot
+  labels:
+    app: jupyter-permissions
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jupyter-permissions
+  template:
+    metadata:
+      labels:
+        app: jupyter-permissions
+    spec:
+      initContainers:
+      - name: fix-permissions
+        image: busybox:1.35
+        command: ['sh', '-c']
+        args:
+        - |
+          mkdir -p /home/jovyan/work
+          chown -R 1000:100 /home/jovyan/work
+          chmod -R 755 /home/jovyan/work
+        volumeMounts:
+        - name: persistent-storage
+          mountPath: /home/jovyan/work
+        securityContext:
+          runAsUser: 0
+      containers:
+      - name: jupyter
+        image: jupyter/minimal-notebook:latest
+        ports:
+        - containerPort: 8888
+        env:
+        - name: JUPYTER_ENABLE_LAB
+          value: "yes"
+        - name: JUPYTER_TOKEN
+          value: "stock-bot-jupyter-2024"
+        - name: PYTHONPATH
+          value: "/home/jovyan/work:/home/jovyan/work/src"
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: persistent-storage
+          mountPath: /home/jovyan/work
+        command: ["jupyter"]
+        args: ["lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=stock-bot-jupyter-2024", "--NotebookApp.password=", "--NotebookApp.disable_check_xsrf=True"]
+      volumes:
+      - name: persistent-storage
+        persistentVolumeClaim:
+          claimName: jupyter-permissions-pvc
+      restartPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jupyter-permissions-service
+  namespace: stock-bot
+spec:
+  selector:
+    app: jupyter-permissions
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8888
+  type: LoadBalancer
