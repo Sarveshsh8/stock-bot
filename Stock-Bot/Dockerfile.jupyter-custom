@@ -1,0 +1,54 @@
+# Custom Jupyter image with all Stock Bot dependencies
+FROM jupyter/minimal-notebook:latest
+
+# Switch to root to install system dependencies
+USER root
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Switch back to jovyan user
+USER jovyan
+
+# Set working directory
+WORKDIR /home/jovyan/work
+
+# Copy requirements file
+COPY requirements.txt /tmp/requirements.txt
+
+# Install Python dependenciesma
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
+# Install additional ML and data science packages
+RUN pip install --no-cache-dir \
+    matplotlib \
+    seaborn \
+    plotly \
+    scikit-learn \
+    opencv-python \
+    pillow \
+    requests \
+    beautifulsoup4 \
+    lxml \
+    xlsxwriter \
+    openpyxl \
+    faiss-cpu \
+    torch \
+    transformers \
+    accelerate \
+    datasets \
+    sentence-transformers
+
+# Set environment variables
+ENV JUPYTER_ENABLE_LAB=yes
+ENV PYTHONPATH=/home/jovyan/work:/home/jovyan/work/src
+
+# Expose port
+EXPOSE 8888
+
+# Set default command
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser", "--allow-root", "--NotebookApp.token=stock-bot-jupyter-2024", "--NotebookApp.password=", "--NotebookApp.disable_check_xsrf=True"]
