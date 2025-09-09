@@ -57,10 +57,10 @@ get_app_names() {
             echo "jupyter-custom-deps:jupyter-custom-deps-service"
             ;;
         streamlit)
-            echo "stock-bot-streamlit:stock-bot-streamlit"
+            echo "stock-bot-app:stock-bot-streamlit"
             ;;
         flask)
-            echo "stock-bot-flask:stock-bot-flask"
+            echo "stock-bot-app:stock-bot-flask"
             ;;
         *)
             print_error "Unknown application: $1"
@@ -227,17 +227,37 @@ check_all_status() {
     echo
 }
 
+# Function to get the current working Jupyter URL
+get_current_jupyter_url() {
+    # Try LoadBalancer first
+    local lb_url=$(kubectl get svc jupyter-custom-deps-service -n $NAMESPACE -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+    if [ -n "$lb_url" ]; then
+        echo "http://$lb_url"
+        return 0
+    fi
+    
+    # Fallback to NodePort if LoadBalancer not ready
+    local nodeport_url=$(kubectl get svc jupyter-nodeport -n $NAMESPACE -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
+    if [ -n "$nodeport_url" ]; then
+        echo "http://$nodeport_url:8888"
+        return 0
+    fi
+    
+    return 1
+}
+
 # Function to show all URLs
 show_all_urls() {
     print_header "Stock Bot Application URLs:"
     echo
     print_app "JUPYTER" "Getting URL..."
-    local jupyter_url=$(get_app_url "jupyter" 2>/dev/null)
+    local jupyter_url=$(get_current_jupyter_url 2>/dev/null)
     if [ $? -eq 0 ]; then
         print_app "JUPYTER" "URL: $jupyter_url"
         print_app "JUPYTER" "Token: stock-bot-jupyter-2024"
+        print_app "JUPYTER" "Quick Access: open '$jupyter_url' in browser"
     else
-        print_app "JUPYTER" "Not running"
+        print_app "JUPYTER" "Not running or URL not available"
     fi
     echo
     
@@ -260,6 +280,28 @@ show_all_urls() {
     echo
 }
 
+# Function to open Jupyter in browser
+open_jupyter() {
+    local jupyter_url=$(get_current_jupyter_url 2>/dev/null)
+    if [ $? -eq 0 ]; then
+        print_success "Opening Jupyter Lab in browser..."
+        print_app "JUPYTER" "URL: $jupyter_url"
+        print_app "JUPYTER" "Token: stock-bot-jupyter-2024"
+        
+        # Try to open in browser (works on macOS and Linux)
+        if command -v open &> /dev/null; then
+            open "$jupyter_url"
+        elif command -v xdg-open &> /dev/null; then
+            xdg-open "$jupyter_url"
+        else
+            print_warning "Cannot auto-open browser. Please manually open: $jupyter_url"
+        fi
+    else
+        print_error "Jupyter URL not available. Make sure Jupyter is running."
+        return 1
+    fi
+}
+
 # Function to show help
 show_help() {
     echo "Stock Bot Control Script"
@@ -273,6 +315,7 @@ show_help() {
     echo "  status [app]    Check the status of an application or all applications"
     echo "  url [app]       Get the URL of an application"
     echo "  urls            Show all application URLs"
+    echo "  open            Open Jupyter Lab in browser (with correct URL)"
     echo "  help            Show this help message"
     echo
     echo "Applications:"
@@ -288,6 +331,7 @@ show_help() {
     echo "  $0 status all           # Check status of all apps"
     echo "  $0 url jupyter          # Get Jupyter URL"
     echo "  $0 urls                 # Show all URLs"
+    echo "  $0 open                 # Open Jupyter in browser"
     echo "  $0 start all            # Start all applications"
     echo "  $0 stop all             # Stop all applications"
 }
@@ -377,6 +421,9 @@ case "${1:-help}" in
         ;;
     urls)
         show_all_urls
+        ;;
+    open)
+        open_jupyter
         ;;
     help|--help|-h)
         show_help
