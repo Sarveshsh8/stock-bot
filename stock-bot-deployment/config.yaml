@@ -1,0 +1,67 @@
+# Stock Bot V3 - Unified Configuration
+# Configure ETFs, stocks, and system settings
+
+# Exchange Traded Funds (ETFs)
+etfs:
+  # Major Market ETFs
+  - symbol: "SPY"
+    name: "SPDR S&P 500 ETF Trust"
+    category: "US Large Cap"
+    
+  - symbol: "QQQ"
+    name: "Invesco QQQ Trust"
+    category: "US Technology"
+    
+  # Uncomment ETFs you want to include:
+  # - symbol: "IWM"
+  #   name: "iShares Russell 2000 ETF"
+  #   category: "US Small Cap"
+    
+  # - symbol: "VTI"
+  #   name: "Vanguard Total Stock Market ETF"
+  #   category: "US Total Market"
+
+# Individual Stocks
+stocks:
+  # Tech Stocks
+  - symbol: "AAPL"
+    name: "Apple Inc."
+    category: "Technology"
+    
+  - symbol: "MSFT"
+    name: "Microsoft Corporation"
+    category: "Technology"
+    
+  # Uncomment stocks you want to include:
+  # - symbol: "GOOGL"
+  #   name: "Alphabet Inc. Class A"
+  #   category: "Technology"
+    
+  # - symbol: "AMZN"
+  #   name: "Amazon.com Inc."
+  #   category: "Consumer Discretionary"
+
+# Data fetching settings
+data_settings:
+  default_period_months: 6
+  output_directory: "data"
+  excel_filename: "financial_data.xlsx"
+
+# S3 Storage settings
+s3_settings:
+  bucket_name: "stock-bot-v3-data"
+  region: "us-east-1"
+  version_prefix: "v1.0"
+  
+# FAISS Index settings
+faiss_settings:
+  model_name: "all-MiniLM-L6-v2"
+  index_dimension: 384
+  chunk_size: 1000
+  overlap_size: 200
+
+# AWS Bedrock settings
+bedrock_settings:
+  region: "us-east-1"
+  nova_pro_arn: "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0"
+  max_tokens: 4000

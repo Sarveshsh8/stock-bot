@@ -1,0 +1,20 @@
+# AWS Configuration
+AWS_ACCESS_KEY_ID=your_access_key_here
+AWS_SECRET_ACCESS_KEY=your_secret_key_here
+AWS_DEFAULT_REGION=us-east-1
+
+# S3 Configuration
+S3_BUCKET_NAME=stock-bot-v3-data
+
+# Optional: AWS Profile
+# AWS_PROFILE=default
+
+# AWS Credentials for Stock Analysis System
+AWS_ACCESS_KEY_ID=AKIAUJRTKQNULWFWRMNV
+AWS_DEFAULT_REGION=us-east-1
+AWS_SECRET_ACCESS_KEY=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
+S3_BUCKET_NAME=stock-analysis-bot
+S3_PREFIX=apple_trading_data/
+
+
+FOLDER_PATH=./data

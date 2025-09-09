@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stock-bot-v3
+  namespace: stock-bot-v3
+  labels:
+    app: stock-bot-v3
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: stock-bot-v3
+  template:
+    metadata:
+      labels:
+        app: stock-bot-v3
+    spec:
+      serviceAccountName: stock-bot-v3-sa
+      containers:
+      - name: stock-bot-v3
+        image: 295386645352.dkr.ecr.us-east-1.amazonaws.com/stock-bot-v3:latest
+        command: ["python", "-m", "streamlit", "run", "web_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+        ports:
+        - containerPort: 8501
+          name: streamlit
+        - containerPort: 5000
+          name: flask
+        env:
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: aws-secrets
+              key: aws-access-key-id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: aws-secrets
+              key: aws-secret-access-key
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-1"
+        - name: S3_BUCKET_NAME
+          valueFrom:
+            secretKeyRef:
+              name: aws-secrets
+              key: s3-bucket-name
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config.yaml
+          subPath: config.yaml
+        - name: data-volume
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8501
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8501
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config-volume
+        configMap:
+          name: stock-bot-v3-config
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: stock-bot-v3-pvc
