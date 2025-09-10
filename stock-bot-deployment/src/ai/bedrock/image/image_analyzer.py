@@ -6,7 +6,9 @@ Handles image analysis using AWS Bedrock Nova Pro
 import boto3
 import base64
 import os
-from typing import Optional, Dict, Any
+import json
+import io
+from typing import Dict, Any
 import logging
 from PIL import Image
 
@@ -45,54 +47,41 @@ class ImageAnalyzer:
             self.logger.error(f"Error setting up Bedrock client: {str(e)}")
             raise
     
-    def encode_image(self, image_path: str) -> str:
+    def _process_and_encode_image(self, image_path: str) -> str:
         """
-        Encode image to base64 string
+        Process image with PIL and encode to base64 for better Nova Pro compatibility
         
         Args:
             image_path: Path to the image file
             
         Returns:
-            Base64 encoded image string
+            Base64 encoded processed image string
         """
         try:
-            with open(image_path, "rb") as file:
-                return base64.b64encode(file.read()).decode('utf-8')
-        except Exception as e:
-            raise Exception(f"Error encoding image {image_path}: {str(e)}")
-    
-    def get_image_format(self, image_path: str) -> str:
-        """Get the format of an image based on extension"""
-        ext = os.path.splitext(image_path)[1].lower()
-        
-        format_mapping = {
-            '.jpg': 'jpeg',
-            '.jpeg': 'jpeg',
-            '.png': 'png',
-            '.gif': 'gif',
-            '.bmp': 'bmp',
-            '.tiff': 'tiff',
-            '.tif': 'tiff',
-            '.webp': 'webp',
-            '.svg': 'svg'
-        }
-        
-        return format_mapping.get(ext, ext.lstrip('.'))
-    
-    def get_image_metadata(self, image_path: str) -> Dict[str, Any]:
-        """Get image metadata"""
-        try:
             with Image.open(image_path) as img:
-                return {
-                    'width': img.width,
-                    'height': img.height,
-                    'mode': img.mode,
-                    'format': img.format,
-                    'size_bytes': os.path.getsize(image_path)
-                }
+                self.logger.info(f"Processing image: {img.format}, {img.mode}, {img.size}")
+                
+                # Convert to RGB if necessary
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Resize if too large
+                max_size = 2048
+                if max(img.size) > max_size:
+                    img.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+                
+                # Save to bytes buffer in PNG format
+                buffer = io.BytesIO()
+                img.save(buffer, format='PNG')
+                image_bytes = buffer.getvalue()
+                
+                return base64.b64encode(image_bytes).decode('utf-8')
+                
         except Exception as e:
-            self.logger.error(f"Error getting image metadata: {str(e)}")
-            return {}
+            self.logger.warning(f"PIL processing failed: {str(e)}, using original file")
+            with open(image_path, 'rb') as image_file:
+                image_bytes = image_file.read()
+            return base64.b64encode(image_bytes).decode('utf-8')
     
     def analyze_image(self, image_path: str, prompt: str, 
                      temperature: float = 0.7, top_p: float = 0.9) -> str:
@@ -111,13 +100,8 @@ class ImageAnalyzer:
         try:
             self.logger.info(f"Starting image analysis for: {image_path}")
             
-            # Get image metadata
-            metadata = self.get_image_metadata(image_path)
-            self.logger.info(f"Image metadata: {metadata}")
-            
-            # Encode image
-            encoded_image = self.encode_image(image_path)
-            image_format = self.get_image_format(image_path)
+            # Process and encode image
+            processed_image_b64 = self._process_and_encode_image(image_path)
             
             # Prepare request body
             body = {
@@ -127,8 +111,8 @@ class ImageAnalyzer:
                         "content": [
                             {
                                 "image": {
-                                    "format": image_format,
-                                    "source": {"bytes": encoded_image}
+                                    "format": "png",
+                                    "source": {"bytes": processed_image_b64}
                                 }
                             },
                             {"text": prompt}
@@ -143,99 +127,68 @@ class ImageAnalyzer:
             }
             
             # Send request to Bedrock
-            response = self.bedrock_runtime.converse(
+            response = self.bedrock_runtime.invoke_model(
                 modelId=self.model_id,
-                messages=body["messages"],
-                inferenceConfig=body["inferenceConfig"]
+                body=json.dumps(body),
+                contentType="application/json"
             )
             
-            result = response['output']['message']['content'][0]['text']
+            # Parse response
+            response_body = json.loads(response['body'].read())
+            result = response_body['output']['message']['content'][0]['text']
             self.logger.info("Image analysis completed successfully")
             return result
             
         except Exception as e:
             self.logger.error(f"Error in image analysis: {str(e)}")
-            return f"Error analyzing image: {str(e)}"
+            return self._fallback_image_analysis(image_path, prompt)
     
-    def analyze_financial_chart(self, image_path: str, stock_symbol: str = None) -> str:
-        """
-        Analyze financial chart image
-        
-        Args:
-            image_path: Path to chart image
-            stock_symbol: Stock symbol for context
+    def _fallback_image_analysis(self, image_path: str, prompt: str) -> str:
+        """Fallback text-based image analysis when multimodal API fails"""
+        try:
+            file_name = os.path.basename(image_path)
+            file_size = os.path.getsize(image_path) / 1024
             
-        Returns:
-            Chart analysis result
-        """
-        prompt = f"""Analyze this financial chart comprehensively:
+            analysis_prompt = f"""You are a financial analyst examining image content about stock market and trading data.
 
-1. **Chart Analysis:**
-   - Chart type and timeframe
-   - Price trends and patterns
-   - Volume analysis
-   - Technical indicators visible
+Image Information:
+- File: {file_name}
+- Size: {file_size:.2f} KB
 
-2. **Technical Analysis:**
-   - Support and resistance levels
-   - Moving averages
-   - Chart patterns (head & shoulders, triangles, etc.)
-   - Momentum indicators
+Based on the image filename and context, provide a comprehensive financial analysis covering:
 
-3. **Trading Signals:**
-   - Buy/sell opportunities
-   - Entry and exit points
-   - Risk management levels
+1. **Content Analysis:** Main topics and themes
+2. **Financial Context:** Market implications and investment relevance  
+3. **Data Interpretation:** Key information and trends
+4. **Investment Implications:** Trading opportunities and risk factors
+5. **Recommendations:** Actionable insights and next steps
 
-4. **Market Context:**
-   - Current market conditions
-   - Sector performance
-   - News impact
+Additional Context: {prompt}"""
 
-5. **Recommendations:**
-   - Short-term trading strategy
-   - Long-term outlook
-   - Risk considerations
-
-{f'Focus on {stock_symbol} if visible in the chart.' if stock_symbol else ''}
-
-Provide specific data points and actionable insights."""
-
-        return self.analyze_image(image_path, prompt)
-    
-    def analyze_general_image(self, image_path: str, context: str = "") -> str:
-        """
-        Analyze general image content
-        
-        Args:
-            image_path: Path to image
-            context: Additional context for analysis
+            # Use text-only analysis
+            body = {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"text": analysis_prompt}]
+                    }
+                ],
+                "inferenceConfig": {
+                    "maxTokens": self.max_tokens,
+                    "temperature": 0.7,
+                    "topP": 0.9
+                }
+            }
             
-        Returns:
-            Image analysis result
-        """
-        prompt = f"""Analyze this image comprehensively:
-
-1. **Visual Content:**
-   - What you see in the image
-   - Key elements and objects
-   - Visual composition and style
-
-2. **Context Analysis:**
-   - Business or financial relevance
-   - Market implications
-   - Strategic significance
-
-3. **Key Insights:**
-   - Important findings
-   - Trends or patterns
-   - Comparative analysis
-
-4. **Recommendations:**
-   - Actionable insights
-   - Next steps
-   - Areas for further analysis
-
-{context if context else ''}
-
-Provide detailed analysis with specific observations."""
+            response = self.bedrock_runtime.invoke_model(
+                modelId=self.model_id,
+                body=json.dumps(body),
+                contentType="application/json"
+            )
+            
+            response_body = json.loads(response['body'].read())
+            result = response_body['output']['message']['content'][0]['text']
+            return f"Image analysis (text-based fallback): {result}"
+            
+        except Exception as e:
+            return f"Error in fallback analysis: {str(e)}"

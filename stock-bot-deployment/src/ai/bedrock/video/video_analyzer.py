@@ -6,7 +6,8 @@ Handles video analysis using AWS Bedrock Nova Pro
 import boto3
 import base64
 import os
-from typing import Optional, Dict, Any
+import json
+from typing import Dict, Any
 import logging
 
 class VideoAnalyzer:
@@ -44,86 +45,15 @@ class VideoAnalyzer:
             self.logger.error(f"Error setting up Bedrock client: {str(e)}")
             raise
     
-    def encode_video(self, video_path: str) -> str:
-        """
-        Encode video to base64 string
-        
-        Args:
-            video_path: Path to the video file
-            
-        Returns:
-            Base64 encoded video string
-        """
-        try:
-            with open(video_path, "rb") as file:
-                return base64.b64encode(file.read()).decode('utf-8')
-        except Exception as e:
-            raise Exception(f"Error encoding video {video_path}: {str(e)}")
-    
-    def get_video_format(self, video_path: str) -> str:
+    def _get_video_format(self, video_path: str) -> str:
         """Get the format of a video based on extension"""
         ext = os.path.splitext(video_path)[1].lower()
-        
         format_mapping = {
-            '.mp4': 'mp4',
-            '.avi': 'avi',
-            '.mov': 'mov',
-            '.wmv': 'wmv',
-            '.flv': 'flv',
-            '.webm': 'webm',
-            '.mkv': 'mkv',
-            '.m4v': 'mp4',
-            '.3gp': '3gp',
-            '.ogv': 'ogv',
-            '.mpg': 'mpeg',
-            '.mpeg': 'mpeg'
+            '.mp4': 'mp4', '.avi': 'avi', '.mov': 'mov', '.wmv': 'wmv',
+            '.flv': 'flv', '.webm': 'webm', '.mkv': 'mkv', '.m4v': 'mp4',
+            '.3gp': '3gp', '.ogv': 'ogv', '.mpg': 'mpeg', '.mpeg': 'mpeg'
         }
-        
-        return format_mapping.get(ext, ext.lstrip('.'))
-    
-    def get_video_metadata(self, video_path: str) -> Dict[str, Any]:
-        """Get video metadata"""
-        try:
-            file_size = os.path.getsize(video_path)
-            file_name = os.path.basename(video_path)
-            
-            # Try to get video metadata using cv2 if available
-            try:
-                import cv2
-                cap = cv2.VideoCapture(video_path)
-                if cap.isOpened():
-                    fps = cap.get(cv2.CAP_PROP_FPS)
-                    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                    duration = total_frames / fps if fps > 0 else 0
-                    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                    cap.release()
-                    
-                    return {
-                        'file_name': file_name,
-                        'file_size': file_size,
-                        'duration': duration,
-                        'width': width,
-                        'height': height,
-                        'fps': fps,
-                        'total_frames': total_frames
-                    }
-            except ImportError:
-                pass
-            
-            return {
-                'file_name': file_name,
-                'file_size': file_size,
-                'duration': 'unknown',
-                'width': 'unknown',
-                'height': 'unknown',
-                'fps': 'unknown',
-                'total_frames': 'unknown'
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error getting video metadata: {str(e)}")
-            return {}
+        return format_mapping.get(ext, 'mp4')
     
     def analyze_video(self, video_path: str, prompt: str, 
                      temperature: float = 0.7, top_p: float = 0.9) -> str:
@@ -142,21 +72,16 @@ class VideoAnalyzer:
         try:
             self.logger.info(f"Starting video analysis for: {video_path}")
             
-            # Check file size (Nova Pro video size limit is typically around 25MB)
+            # Check file size (25MB limit for Nova Pro)
             file_size = os.path.getsize(video_path)
-            self.logger.info(f"Video file size: {file_size} bytes ({file_size / (1024*1024):.2f} MB)")
-            
-            max_size = 25 * 1024 * 1024  # 25MB
-            if file_size > max_size:
-                return f"Video file is too large for analysis ({file_size / (1024*1024):.2f} MB). Maximum supported size is {max_size / (1024*1024)} MB."
-            
-            # Get video metadata
-            metadata = self.get_video_metadata(video_path)
-            self.logger.info(f"Video metadata: {metadata}")
+            if file_size > 25 * 1024 * 1024:
+                return f"Video file is too large ({file_size / (1024*1024):.2f} MB). Maximum supported size is 25 MB."
             
             # Encode video
-            encoded_video = self.encode_video(video_path)
-            video_format = self.get_video_format(video_path)
+            with open(video_path, "rb") as file:
+                encoded_video = base64.b64encode(file.read()).decode('utf-8')
+            
+            video_format = self._get_video_format(video_path)
             
             # Prepare request body
             body = {
@@ -182,13 +107,15 @@ class VideoAnalyzer:
             }
             
             # Send request to Bedrock
-            response = self.bedrock_runtime.converse(
+            response = self.bedrock_runtime.invoke_model(
                 modelId=self.model_id,
-                messages=body["messages"],
-                inferenceConfig=body["inferenceConfig"]
+                body=json.dumps(body),
+                contentType="application/json"
             )
             
-            result = response['output']['message']['content'][0]['text']
+            # Parse response
+            response_body = json.loads(response['body'].read())
+            result = response_body['output']['message']['content'][0]['text']
             self.logger.info("Video analysis completed successfully")
             return result
             
@@ -199,44 +126,22 @@ class VideoAnalyzer:
     def _fallback_video_analysis(self, video_path: str, prompt: str) -> str:
         """Fallback text-based video analysis when multimodal API fails"""
         try:
-            metadata = self.get_video_metadata(video_path)
+            file_name = os.path.basename(video_path)
+            file_size = os.path.getsize(video_path) / (1024*1024)
             
             analysis_prompt = f"""You are a financial analyst examining video content about stock market and trading data.
 
 Video Information:
-- File: {metadata.get('file_name', 'unknown')}
-- Size: {metadata.get('file_size', 0) / (1024*1024):.2f} MB
-- Duration: {metadata.get('duration', 'unknown')} seconds
-- Resolution: {metadata.get('width', 'unknown')}x{metadata.get('height', 'unknown')}
+- File: {file_name}
+- Size: {file_size:.2f} MB
 
 Based on the video filename and context, provide a comprehensive financial analysis covering:
 
-1. **Content Analysis:**
-   - Main topics and themes
-   - Key messages conveyed
-   - Visual and audio elements
-
-2. **Financial Context:**
-   - Market implications
-   - Investment relevance
-   - Strategic significance
-
-3. **Data Interpretation:**
-   - Key information extracted
-   - Trends and patterns
-   - Comparative analysis
-
-4. **Investment Implications:**
-   - Trading opportunities
-   - Risk factors
-   - Market sentiment
-
-5. **Recommendations:**
-   - Actionable insights
-   - Next steps
-   - Areas for further analysis
-
-Provide detailed analysis as if you were examining comprehensive video content about financial markets.
+1. **Content Analysis:** Main topics and themes
+2. **Financial Context:** Market implications and investment relevance
+3. **Data Interpretation:** Key information and trends
+4. **Investment Implications:** Trading opportunities and risk factors
+5. **Recommendations:** Actionable insights and next steps
 
 Additional Context: {prompt}"""
 
@@ -255,100 +160,15 @@ Additional Context: {prompt}"""
                 }
             }
             
-            response = self.bedrock_runtime.converse(
+            response = self.bedrock_runtime.invoke_model(
                 modelId=self.model_id,
-                messages=body["messages"],
-                inferenceConfig=body["inferenceConfig"]
+                body=json.dumps(body),
+                contentType="application/json"
             )
             
-            result = response['output']['message']['content'][0]['text']
+            response_body = json.loads(response['body'].read())
+            result = response_body['output']['message']['content'][0]['text']
             return f"Video analysis (text-based fallback): {result}"
             
         except Exception as e:
             return f"Error in fallback analysis: {str(e)}"
-    
-    def analyze_earnings_call(self, video_path: str, company: str = None) -> str:
-        """
-        Analyze earnings call video
-        
-        Args:
-            video_path: Path to earnings call video
-            company: Company name for context
-            
-        Returns:
-            Earnings call analysis result
-        """
-        prompt = f"""Analyze this earnings call video comprehensively:
-
-1. **Content Summary:**
-   - Main topics and themes discussed
-   - Key messages from management
-   - Visual elements and presentation style
-
-2. **Financial Performance:**
-   - Revenue and profit trends
-   - Key performance metrics
-   - Comparison with expectations
-
-3. **Business Insights:**
-   - Strategic initiatives
-   - Market positioning
-   - Growth prospects
-
-4. **Market Impact:**
-   - Stock price implications
-   - Investor sentiment
-   - Sector performance
-
-5. **Investment Outlook:**
-   - Growth prospects
-   - Risk factors
-   - Investment recommendations
-
-{f'Focus on {company} if mentioned in the video.' if company else ''}
-
-Provide detailed analysis with specific insights and recommendations."""
-
-        return self.analyze_video(video_path, prompt)
-    
-    def analyze_market_analysis_video(self, video_path: str, market_context: str = "") -> str:
-        """
-        Analyze market analysis video
-        
-        Args:
-            video_path: Path to market analysis video
-            market_context: Additional market context
-            
-        Returns:
-            Market analysis result
-        """
-        prompt = f"""Analyze this market analysis video comprehensively:
-
-1. **Market Overview:**
-   - Current market conditions
-   - Key trends and patterns
-   - Sector performance
-
-2. **Technical Analysis:**
-   - Chart patterns and indicators
-   - Support and resistance levels
-   - Trading signals
-
-3. **Fundamental Analysis:**
-   - Economic indicators
-   - Company performance
-   - Industry trends
-
-4. **Trading Opportunities:**
-   - Buy/sell signals
-   - Entry and exit points
-   - Risk management
-
-5. **Market Outlook:**
-   - Short-term predictions
-   - Long-term trends
-   - Risk factors
-
-{market_context if market_context else ''}
-
-Provide actionable insights and specific recommendations."""

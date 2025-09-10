@@ -1,311 +1,473 @@
 """
-Stock Bot V3 - Web Application
-Streamlit-based web interface for the unified financial analysis platform
+Stock Bot V3 - Simple Unified App
+Single interface for file uploads, Yahoo Finance data, indexing, and Q&A
 """
 
 import streamlit as st
 import os
-import sys
 import tempfile
-from typing import List, Dict, Any
-import json
+import yaml
+import boto3
+from datetime import datetime, timedelta
+import yfinance as yf
+import pandas as pd
+from dotenv import load_dotenv
+import sys
 
 # Add src to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-from unified_pipeline import UnifiedPipeline
+from ai.faiss.faiss_manager import FAISSManager
+from ai.bedrock.video.video_analyzer import VideoAnalyzer
+from ai.bedrock.image.image_analyzer import ImageAnalyzer
+from ai.prompts.qa_prompts import get_prompt
+from ai.prompts.financial_prompts import get_video_prompt, get_image_prompt
+import boto3
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Page configuration
 st.set_page_config(
-    page_title="Stock Bot V3 - Unified Financial Analysis",
+    page_title="Stock Bot V3 - Simple App",
     page_icon="📊",
     layout="wide"
 )
 
 # Initialize session state
-if 'pipeline' not in st.session_state:
-    st.session_state.pipeline = None
-if 'system_status' not in st.session_state:
-    st.session_state.system_status = None
+if 'index_created' not in st.session_state:
+    st.session_state.index_created = False
+if 'faiss_manager' not in st.session_state:
+    st.session_state.faiss_manager = None
+if 's3_client' not in st.session_state:
+    st.session_state.s3_client = None
 
-def initialize_pipeline():
-    """Initialize the unified pipeline"""
+def setup_faiss_manager():
+    """Setup FAISS manager"""
     try:
-        if st.session_state.pipeline is None:
-            st.session_state.pipeline = UnifiedPipeline()
-            st.session_state.system_status = st.session_state.pipeline.get_system_status()
+        if st.session_state.faiss_manager is None:
+            # Load config for FAISS settings
+            config = load_config()
+            if not config:
+                st.error("Failed to load config for FAISS settings")
+                return False
+            
+            st.session_state.faiss_manager = FAISSManager(config)
         return True
     except Exception as e:
-        st.error(f"Failed to initialize pipeline: {str(e)}")
+        st.error(f"FAISS setup failed: {str(e)}")
         return False
 
-def main():
-    """Main application"""
-    st.title("📊 Stock Bot V3 - Unified Financial Analysis Platform")
-    st.markdown("---")
-    
-    # Initialize pipeline
-    if not initialize_pipeline():
-        st.stop()
-    
-    # Sidebar for navigation
-    st.sidebar.title("Navigation")
-    page = st.sidebar.selectbox(
-        "Choose a page",
-        ["Dashboard", "Data Pipeline", "File Upload", "Q&A System", "System Status"]
-    )
-    
-    if page == "Dashboard":
-        show_dashboard()
-    elif page == "Data Pipeline":
-        show_data_pipeline()
-    elif page == "File Upload":
-        show_file_upload()
-    elif page == "Q&A System":
-        show_qa_system()
-    elif page == "System Status":
-        show_system_status()
+def setup_analyzers():
+    """Setup Nova Pro analyzers"""
+    try:
+        config = load_config()
+        if not config:
+            st.error("Failed to load config for analyzers")
+            return False, None, None
+        
+        video_analyzer = VideoAnalyzer(config)
+        image_analyzer = ImageAnalyzer(config)
+        return True, video_analyzer, image_analyzer
+    except Exception as e:
+        st.error(f"Analyzer setup failed: {str(e)}")
+        return False, None, None
 
-def show_dashboard():
-    """Show dashboard overview"""
-    st.header("📈 Dashboard")
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            "Configured Symbols",
-            st.session_state.system_status['yahoo_symbols']['total_count']
-        )
-    
-    with col2:
-        st.metric(
-            "ETFs",
-            len(st.session_state.system_status['yahoo_symbols']['etf_symbols'])
-        )
-    
-    with col3:
-        st.metric(
-            "Stocks",
-            len(st.session_state.system_status['yahoo_symbols']['stock_symbols'])
-        )
-    
-    with col4:
-        faiss_status = st.session_state.system_status['faiss_status']['status']
-        st.metric(
-            "FAISS Index",
-            "Active" if faiss_status == 'loaded' else "Inactive"
-        )
-    
-    st.markdown("---")
-    
-    # Show configured symbols
-    st.subheader("📋 Configured Symbols")
-    
-    symbols_info = st.session_state.system_status['yahoo_symbols']
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write("**ETFs:**")
-        for symbol in symbols_info['etf_symbols']:
-            st.write(f"• {symbol}: {symbols_info['symbol_names'][symbol]}")
-    
-    with col2:
-        st.write("**Stocks:**")
-        for symbol in symbols_info['stock_symbols']:
-            st.write(f"• {symbol}: {symbols_info['symbol_names'][symbol]}")
+def get_simple_answer(query, search_results):
+    """Get simple answer using Bedrock for Q&A"""
+    try:
+        # Check for common greetings
+        greeting_words = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening']
+        if any(word in query.lower() for word in greeting_words):
+            return get_prompt("greeting_response", "qa")
+        
+        # If no search results, return a simple response
+        if not search_results:
+            return get_prompt("no_context_response", "qa")
+        
+        # Prepare context from search results
+        context = ""
+        for i, result in enumerate(search_results[:3]):  # Use top 3 results
+            context += f"Source {i+1}: {result['content'][:500]}...\n\n"
+        
+        # Get prompt from qa_prompts.py
+        prompt = get_prompt("simple_qa", "qa").format(context=context, query=query)
 
-def show_data_pipeline():
-    """Show data pipeline interface"""
-    st.header("🔄 Data Pipeline")
-    
-    st.write("Run the complete data pipeline to fetch Yahoo Finance data and create FAISS index.")
-    
-    if st.button("🚀 Run Full Pipeline", type="primary"):
-        with st.spinner("Running pipeline..."):
+        # Use Bedrock for simple Q&A
+        config = load_config()
+        if not config:
+            return "Error: Could not load configuration for Q&A"
+        
+        bedrock_runtime = boto3.client(
+            service_name='bedrock-runtime',
+            region_name=config['bedrock_settings']['region']
+        )
+        
+        body = {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [{"text": prompt}]
+                }
+            ],
+            "inferenceConfig": {
+                "maxTokens": 200,  # Keep answers short
+                "temperature": 0.3,  # More focused responses
+                "topP": 0.9
+            }
+        }
+        
+        response = bedrock_runtime.converse(
+            modelId=config['bedrock_settings']['nova_pro_arn'],
+            messages=body["messages"],
+            inferenceConfig=body["inferenceConfig"]
+        )
+        
+        return response['output']['message']['content'][0]['text']
+        
+    except Exception as e:
+        return f"Error generating answer: {str(e)}"
+
+def process_uploaded_files(uploaded_files):
+    """Process uploaded files with Nova Pro analyzers"""
+    try:
+        success, video_analyzer, image_analyzer = setup_analyzers()
+        if not success:
+            return []
+        
+        processed_files = []
+        
+        for uploaded_file in uploaded_files:
+            # Save file temporarily with proper extension
+            file_ext = os.path.splitext(uploaded_file.name)[1].lower()
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext, mode='wb') as tmp_file:
+                tmp_file.write(uploaded_file.getvalue())
+                tmp_path = tmp_file.name
+            
             try:
-                results = st.session_state.pipeline.run_full_pipeline()
-                
-                if results['status'] == 'success':
-                    st.success("Pipeline completed successfully!")
+                if file_ext in ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv']:
+                    # Process video with Nova Pro
+                    video_prompt = get_video_prompt("general_financial")
+                    analysis = video_analyzer.analyze_video(tmp_path, video_prompt)
                     
-                    # Show results
-                    col1, col2 = st.columns(2)
+                    processed_files.append({
+                        'content': analysis,
+                        'metadata': {
+                            'file_name': uploaded_file.name,
+                            'file_type': 'video',
+                            'file_size': uploaded_file.size,
+                            'source': 'nova_pro_analysis'
+                        }
+                    })
                     
-                    with col1:
-                        st.metric("Yahoo Symbols", results['yahoo_data']['total_symbols'])
-                        st.metric("S3 Uploads", len(results['s3_uploads']))
+                elif file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']:
+                    # Process image with Nova Pro
+                    image_prompt = get_image_prompt("general_financial")
+                    analysis = image_analyzer.analyze_image(tmp_path, image_prompt)
                     
-                    with col2:
-                        st.metric("Files Processed", len(results['uploaded_files']))
-                        st.metric("FAISS Index", results['faiss_index']['status'])
-                    
-                    # Show detailed results
-                    with st.expander("Detailed Results"):
-                        st.json(results)
+                    processed_files.append({
+                        'content': analysis,
+                        'metadata': {
+                            'file_name': uploaded_file.name,
+                            'file_type': 'image',
+                            'file_size': uploaded_file.size,
+                            'source': 'nova_pro_analysis'
+                        }
+                    })
                         
                 else:
-                    st.error(f"Pipeline failed: {results.get('error', 'Unknown error')}")
+                    # For other files, just store basic info
+                    processed_files.append({
+                        'content': f"File: {uploaded_file.name}\nSize: {uploaded_file.size} bytes\nType: {file_ext}",
+                        'metadata': {
+                            'file_name': uploaded_file.name,
+                            'file_type': 'document',
+                            'file_size': uploaded_file.size,
+                            'source': 'file_upload'
+                        }
+                    })
                     
-            except Exception as e:
-                st.error(f"Error running pipeline: {str(e)}")
+            finally:
+                # Clean up temp file
+                os.unlink(tmp_path)
+        
+        return processed_files
+        
+    except Exception as e:
+        st.error(f"Error processing files: {str(e)}")
+        return []
 
-def show_file_upload():
-    """Show file upload interface"""
-    st.header("📁 File Upload")
+def setup_s3():
+    """Setup S3 client"""
+    try:
+        if st.session_state.s3_client is None:
+            # Use environment variables for AWS credentials
+            st.session_state.s3_client = boto3.client(
+                's3',
+                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+                region_name=os.getenv('AWS_DEFAULT_REGION', 'us-east-1')
+            )
+        return True
+    except Exception as e:
+        st.error(f"S3 setup failed: {str(e)}")
+        return False
+
+def load_config():
+    """Load configuration from config.yaml"""
+    try:
+        with open('config.yaml', 'r') as file:
+            return yaml.safe_load(file)
+    except Exception as e:
+        st.error(f"Failed to load config: {str(e)}")
+        return None
+
+def fetch_yahoo_data(symbols, period_months=3):
+    """Fetch data from Yahoo Finance"""
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=period_months * 30)
+        
+        data = {}
+        for symbol in symbols:
+            try:
+                ticker = yf.Ticker(symbol)
+                df = ticker.history(start=start_date, end=end_date)
+                if not df.empty:
+                    data[symbol] = df
+                    st.success(f"✅ Fetched {len(df)} days of data for {symbol}")
+                else:
+                    st.warning(f"⚠️ No data found for {symbol}")
+            except Exception as e:
+                st.error(f"❌ Error fetching {symbol}: {str(e)}")
+        
+        return data
+    except Exception as e:
+        st.error(f"Yahoo Finance error: {str(e)}")
+        return {}
+
+def create_unified_index(yahoo_data, uploaded_files):
+    """Create unified index from both Yahoo data and uploaded files"""
+    index_data = []
     
-    st.write("Upload documents, images, videos, or audio files for analysis.")
+    # Add Yahoo Finance data
+    if yahoo_data:
+        for symbol, df in yahoo_data.items():
+            latest_price = df['Close'].iloc[-1] if not df.empty else 0
+            price_change = ((df['Close'].iloc[-1] - df['Close'].iloc[0]) / df['Close'].iloc[0] * 100) if len(df) > 1 else 0
+            
+            summary = f"""
+            Symbol: {symbol}
+            Latest Price: ${latest_price:.2f}
+            Price Change: {price_change:.2f}%
+            Data Points: {len(df)}
+            Date Range: {df.index[0].strftime('%Y-%m-%d')} to {df.index[-1].strftime('%Y-%m-%d')}
+            """
+            
+            index_data.append({
+                'content': summary,
+                'metadata': {
+                    'type': 'yahoo_finance',
+                    'symbol': symbol,
+                    'source': 'Yahoo Finance API'
+                }
+            })
     
-    # Show supported formats
-    supported_formats = st.session_state.system_status['supported_file_formats']
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.write("**Documents:**")
-        for fmt in supported_formats['documents']:
-            st.write(f"• {fmt}")
-    
-    with col2:
-        st.write("**Images:**")
-        for fmt in supported_formats['images']:
-            st.write(f"• {fmt}")
-    
-    with col3:
-        st.write("**Videos:**")
-        for fmt in supported_formats['videos']:
-            st.write(f"• {fmt}")
-    
-    with col4:
-        st.write("**Audio:**")
-        for fmt in supported_formats['audio']:
-            st.write(f"• {fmt}")
-    
-    st.markdown("---")
-    
-    # File upload
-    uploaded_files = st.file_uploader(
-        "Choose files to upload",
-        accept_multiple_files=True,
-        help="Upload multiple files for analysis"
-    )
-    
+    # Add uploaded files
     if uploaded_files:
-        st.write(f"Uploaded {len(uploaded_files)} files:")
-        
-        # Show uploaded files
         for file in uploaded_files:
-            st.write(f"• {file.name} ({file.size} bytes)")
+            summary = f"""
+            File: {file.name}
+            Size: {file.size} bytes
+            Type: {os.path.splitext(file.name)[1]}
+            Upload Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+            """
+            
+            index_data.append({
+                'content': summary,
+                'metadata': {
+                    'type': 'uploaded_file',
+                    'filename': file.name,
+                    'source': 'User Upload'
+                }
+            })
+    
+    return index_data
+
+def upload_faiss_to_s3(bucket_name="stock-bot-v3-index"):
+    """Upload FAISS index to S3"""
+    try:
+        if not setup_s3() or not st.session_state.faiss_manager:
+            return False
         
-        if st.button("🔄 Process Uploaded Files", type="primary"):
-            with st.spinner("Processing files..."):
-                try:
-                    # Save uploaded files temporarily
-                    temp_files = []
-                    for uploaded_file in uploaded_files:
-                        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
-                            tmp_file.write(uploaded_file.getvalue())
-                            temp_files.append(tmp_file.name)
-                    
-                    # Run pipeline with uploaded files
-                    results = st.session_state.pipeline.run_full_pipeline(temp_files)
-                    
-                    if results['status'] == 'success':
-                        st.success("Files processed successfully!")
-                        
-                        # Show results
-                        st.metric("Files Processed", len(results['uploaded_files']))
-                        st.metric("S3 Uploads", len(results['s3_uploads']))
-                        
-                        # Show detailed results
-                        with st.expander("Processing Results"):
-                            st.json(results)
-                    else:
-                        st.error(f"Processing failed: {results.get('error', 'Unknown error')}")
+        # Try to create bucket if it doesn't exist
+        try:
+            st.session_state.s3_client.head_bucket(Bucket=bucket_name)
+        except:
+            # Bucket doesn't exist, create it
+            try:
+                st.session_state.s3_client.create_bucket(Bucket=bucket_name)
+                st.write(f"Created S3 bucket: {bucket_name}")
+            except Exception as e:
+                st.error(f"Failed to create bucket: {str(e)}")
+                return False
+            
+        # Create timestamped folder
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # Save FAISS index to temporary files
+        temp_index_path = f"/tmp/faiss_index_{timestamp}.index"
+        temp_docs_path = f"/tmp/faiss_docs_{timestamp}.pkl"
+        
+        # Save the index
+        if not st.session_state.faiss_manager.save_index(temp_index_path, temp_docs_path):
+            st.error("Failed to save FAISS index locally")
+            return False
+        
+        # Upload FAISS index file
+        s3_index_key = f"indexes/{timestamp}/faiss_index.index"
+        with open(temp_index_path, 'rb') as f:
+            st.session_state.s3_client.put_object(
+                Bucket=bucket_name,
+                Key=s3_index_key,
+                Body=f,
+                ContentType='application/octet-stream'
+            )
+        
+        # Upload documents file
+        s3_docs_key = f"indexes/{timestamp}/faiss_docs.pkl"
+        with open(temp_docs_path, 'rb') as f:
+            st.session_state.s3_client.put_object(
+                Bucket=bucket_name,
+                Key=s3_docs_key,
+                Body=f,
+                ContentType='application/octet-stream'
+            )
                     
                     # Clean up temp files
-                    for temp_file in temp_files:
-                        os.unlink(temp_file)
+        os.unlink(temp_index_path)
+        os.unlink(temp_docs_path)
                         
-                except Exception as e:
-                    st.error(f"Error processing files: {str(e)}")
+        st.success(f"✅ FAISS index uploaded to S3: s3://{bucket_name}/indexes/{timestamp}/")
+        return True
+        
+    except Exception as e:
+        st.error(f"❌ S3 upload failed: {str(e)}")
+        return False
 
-def show_qa_system():
-    """Show Q&A system interface"""
-    st.header("❓ Q&A System")
+def search_index(query, index_data, k=5):
+    """Simple search in the index"""
+    try:
+        query_lower = query.lower()
+        results = []
+        
+        for item in index_data:
+            content_lower = item['content'].lower()
+            if query_lower in content_lower:
+                score = content_lower.count(query_lower) / len(content_lower.split())
+                results.append({
+                    'content': item['content'],
+                    'metadata': item['metadata'],
+                    'score': score
+                })
+        
+        results.sort(key=lambda x: x['score'], reverse=True)
+        return results[:k]
+    except Exception as e:
+        st.error(f"Search error: {str(e)}")
+        return []
+
+def main():
+    """Minimal interface"""
+    st.title("Stock Bot V3")
     
-    # Check if FAISS index is available
-    faiss_status = st.session_state.system_status['faiss_status']['status']
+    # Simple layout - everything in one column
+    st.write("Upload files, fetch data, create index, search")
     
-    if faiss_status != 'loaded':
-        st.warning("No FAISS index available. Please run the data pipeline first.")
-        return
+    # File upload
+    uploaded_files = st.file_uploader("Upload files:", accept_multiple_files=True)
+    if uploaded_files:
+        st.session_state.uploaded_files = uploaded_files
+        st.write(f"Uploaded: {len(uploaded_files)} files")
     
-    st.write("Ask questions about your financial data and uploaded files.")
+    # Yahoo Finance
+    config = load_config()
+    if config:
+        etf_symbols = [etf['symbol'] for etf in config.get('etfs', [])]
+        stock_symbols = [stock['symbol'] for stock in config.get('stocks', [])]
+        all_symbols = etf_symbols + stock_symbols
+        
+        if all_symbols:
+            st.write(f"Symbols: {', '.join(all_symbols)}")
+            if st.button("Fetch Yahoo Data"):
+                with st.spinner("Fetching..."):
+                    yahoo_data = fetch_yahoo_data(all_symbols, 3)
+                    if yahoo_data:
+                        st.session_state.yahoo_data = yahoo_data
+                        st.write(f"Fetched: {len(yahoo_data)} symbols")
     
-    # Query input
-    query = st.text_input(
-        "Enter your question:",
-        placeholder="e.g., What was Apple's recent performance?"
-    )
+    # Create index
+    if st.button("Create FAISS Index & Store in S3"):
+        uploaded_files = getattr(st.session_state, 'uploaded_files', [])
+        yahoo_data = getattr(st.session_state, 'yahoo_data', {})
+        
+        if uploaded_files or yahoo_data:
+            with st.spinner("Processing files with Nova Pro and creating FAISS index..."):
+                if setup_faiss_manager():
+                    # Process uploaded files with Nova Pro
+                    processed_files = []
+                    if uploaded_files:
+                        processed_files = process_uploaded_files(uploaded_files)
+                    
+                    # Create index from processed files
+                    if processed_files:
+                        st.session_state.faiss_manager.create_index_from_files(processed_files)
+                        st.session_state.index_created = True
+                    
+                    # Create index from Yahoo data
+                    if yahoo_data:
+                        st.session_state.faiss_manager.create_index_from_yahoo_data(yahoo_data)
+                        st.session_state.index_created = True
+                    
+                    # Upload to S3
+                    upload_faiss_to_s3()
     
-    # Number of results
-    k = st.slider("Number of results:", min_value=1, max_value=10, value=5)
-    
-    if st.button("🔍 Search", type="primary") and query:
-        with st.spinner("Searching..."):
-            try:
-                results = st.session_state.pipeline.query_system(query, k)
+    # Q&A System
+    if st.session_state.index_created and st.session_state.faiss_manager:
+        st.subheader("Ask Questions")
+        query = st.text_input("Ask me anything about your financial data:")
+        if st.button("Get Answer") and query:
+            with st.spinner("Searching and generating answer..."):
+                # Search FAISS index
+                search_results = st.session_state.faiss_manager.search(query, 5)
                 
-                if results:
-                    st.success(f"Found {len(results)} results")
-                    
-                    for i, result in enumerate(results):
-                        with st.expander(f"Result {i+1} (Score: {result['score']:.3f})"):
-                            st.write("**Content:**")
-                            st.write(result['content'])
-                            
-                            st.write("**Metadata:**")
-                            st.json(result['metadata'])
-                else:
-                    st.info("No results found for your query.")
-                    
-            except Exception as e:
-                st.error(f"Error searching: {str(e)}")
-
-def show_system_status():
-    """Show system status"""
-    st.header("⚙️ System Status")
+                # Get simple answer
+                answer = get_simple_answer(query, search_results)
+                
+                # Display answer
+                st.write("**Answer:**")
+                st.write(answer)
+                
+                # Show sources if available
+                if search_results:
+                    with st.expander("View Sources"):
+                        for i, result in enumerate(search_results):
+                            st.write(f"**Source {i+1}** (Score: {result['score']:.3f})")
+                            st.write(f"Content: {result['content'][:300]}...")
+                            st.write(f"Type: {result['metadata'].get('source', 'unknown')}")
+                            st.write("---")
     
-    # Refresh status
-    if st.button("🔄 Refresh Status"):
-        st.session_state.system_status = st.session_state.pipeline.get_system_status()
-        st.rerun()
-    
-    # Show status information
-    status = st.session_state.system_status
-    
-    col1, col2 = st.columns(2)
-    
+    # Status
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.subheader("📊 Data Sources")
-        st.write(f"**Config loaded:** {status['config_loaded']}")
-        st.write(f"**Total symbols:** {status['yahoo_symbols']['total_count']}")
-        st.write(f"**ETFs:** {len(status['yahoo_symbols']['etf_symbols'])}")
-        st.write(f"**Stocks:** {len(status['yahoo_symbols']['stock_symbols'])}")
-    
+        st.metric("Files", len(getattr(st.session_state, 'uploaded_files', [])))
     with col2:
-        st.subheader("🔧 System Components")
-        st.write(f"**S3 Status:** {status['s3_status']['status']}")
-        st.write(f"**FAISS Status:** {status['faiss_status']['status']}")
-        if status['faiss_status']['status'] == 'loaded':
-            st.write(f"**Index Vectors:** {status['faiss_status']['total_vectors']}")
-            st.write(f"**Index Documents:** {status['faiss_status']['total_documents']}")
-    
-    # Show detailed status
-    with st.expander("Detailed System Status"):
-        st.json(status)
+        st.metric("Yahoo", len(getattr(st.session_state, 'yahoo_data', {})))
+    with col3:
+        st.metric("Index", "Yes" if st.session_state.index_created else "No")
+
+
 
 if __name__ == "__main__":
     main()
+

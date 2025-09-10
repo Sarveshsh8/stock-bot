@@ -1,20 +1,20 @@
 # Stock Bot V3 - Complete Deployment Guide
 
-## 🚀 Deployment Scenarios
+##  Deployment Scenarios
 
 This guide covers two main deployment scenarios:
 
 1. **Frontend + Backend Deployment** - Streamlit web interface with backend services
 2. **Jupyter Notebook on EKS** - Interactive notebook environment in Kubernetes
 
-## 📋 Prerequisites
+##  Prerequisites
 
 - **Kubernetes Cluster** (EKS recommended)
 - **kubectl** configured and connected to your cluster
 - **Docker** for building images
 - **AWS Credentials** configured (for S3 and Bedrock)
 
-## 🎯 Scenario 1: Frontend + Backend Deployment
+##  Scenario 1: Frontend + Backend Deployment
 
 ### What This Deploys:
 - **Streamlit Web Interface** (Port 8501)
@@ -42,13 +42,13 @@ This guide covers two main deployment scenarios:
 ```
 
 ### Features Available:
-- ✅ Interactive web dashboard
-- ✅ File upload interface
-- ✅ Data pipeline controls
-- ✅ Q&A system
-- ✅ Real-time monitoring
+-  Interactive web dashboard
+-  File upload interface
+-  Data pipeline controls
+-  Q&A system
+-  Real-time monitoring
 
-## 📓 Scenario 2: Jupyter Notebook on EKS
+##  Scenario 2: Jupyter Notebook on EKS
 
 ### What This Deploys:
 - **Jupyter Notebook Server** (Port 8888)
@@ -74,13 +74,13 @@ This guide covers two main deployment scenarios:
 ```
 
 ### Features Available:
-- ✅ Interactive notebook environment
-- ✅ All Stock Bot V3 modules available
-- ✅ Persistent notebook storage
-- ✅ Full development environment
-- ✅ Direct access to all components
+-  Interactive notebook environment
+-  All Stock Bot V3 modules available
+-  Persistent notebook storage
+-  Full development environment
+-  Direct access to all components
 
-## 🎯 Scenario 3: Complete System
+##  Scenario 3: Complete System
 
 ### What This Deploys:
 - **Both Frontend/Backend AND Jupyter**
@@ -102,7 +102,7 @@ This guide covers two main deployment scenarios:
 ./control-complete.sh urls
 ```
 
-## 🛠️ Management Commands
+##  Management Commands
 
 ### Control Script Usage:
 
@@ -133,7 +133,7 @@ This guide covers two main deployment scenarios:
 ./control-complete.sh jupyter
 ```
 
-## 🔧 Configuration
+##  Configuration
 
 ### Before Deployment:
 
@@ -165,7 +165,7 @@ stocks:
     category: "Technology"
 ```
 
-## 📊 Monitoring and Troubleshooting
+##  Monitoring and Troubleshooting
 
 ### Check Pod Status:
 ```bash
@@ -195,7 +195,7 @@ kubectl exec -it deployment/stock-bot-v3 -n stock-bot-v3 -- /bin/bash
 kubectl exec -it deployment/stock-bot-v3-jupyter -n stock-bot-v3 -- /bin/bash
 ```
 
-## 🌐 Access URLs
+##  Access URLs
 
 After deployment, you'll get URLs like:
 
@@ -211,14 +211,14 @@ After deployment, you'll get URLs like:
 - **Jupyter**: `http://[EXTERNAL-IP]` (different port)
 - **API**: `http://[EXTERNAL-IP]:5000`
 
-## 🔒 Security Notes
+##  Security Notes
 
 - **AWS Credentials** are stored as Kubernetes secrets
 - **LoadBalancer** services expose ports to the internet
 - **Persistent volumes** maintain data across restarts
 - **Health checks** ensure service availability
 
-## 🚀 Quick Start
+##  Quick Start
 
 ```bash
 # 1. Clone and navigate to project
@@ -238,7 +238,7 @@ cd stock-bot-v3
 # 5. Access your services!
 ```
 
-## 📞 Support
+##  Support
 
 For issues or questions:
 1. Check pod logs: `./control-complete.sh logs`
