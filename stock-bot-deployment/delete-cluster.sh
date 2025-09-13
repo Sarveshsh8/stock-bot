@@ -6,8 +6,8 @@
 set -e
 
 # Set AWS credentials
-export AWS_ACCESS_KEY_ID=AKIAUJRTKQNULWFWRMNV
-export AWS_SECRET_ACCESS_KEY=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
+export AWS_ACCESS_KEY_ID=""
+export AWS_SECRET_ACCESS_KEY=""
 export AWS_DEFAULT_REGION=us-east-1
 
 # Colors for output
