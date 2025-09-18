@@ -11,6 +11,7 @@ from typing import Dict, List, Optional, Any, Tuple
 import logging
 from sentence_transformers import SentenceTransformer
 import json
+from datetime import datetime
 
 class FAISSManager:
     """Manages FAISS vector database operations"""
@@ -28,6 +29,14 @@ class FAISSManager:
         self.chunk_size = config['faiss_settings']['chunk_size']
         self.overlap_size = config['faiss_settings']['overlap_size']
         
+        # Storage settings
+        self.storage_config = config['faiss_settings'].get('storage', {})
+        self.local_directory = self.storage_config.get('local_directory', 'indices')
+        self.filename_prefix = self.storage_config.get('filename_prefix', 'financial_index')
+        self.use_timestamp = self.storage_config.get('use_timestamp', True)
+        self.auto_save = self.storage_config.get('auto_save', True)
+        self.max_local_files = self.storage_config.get('max_local_files', 10)
+        
         self.model = None
         self.index = None
         self.documents = []
@@ -35,6 +44,7 @@ class FAISSManager:
         
         self._setup_logging()
         self._load_model()
+        self._ensure_local_directory()
     
     def _setup_logging(self):
         """Setup logging"""
@@ -49,6 +59,60 @@ class FAISSManager:
         except Exception as e:
             self.logger.error(f"Error loading model: {str(e)}")
             raise
+    
+    def _ensure_local_directory(self):
+        """Ensure local directory exists"""
+        try:
+            os.makedirs(self.local_directory, exist_ok=True)
+            self.logger.info(f"Local directory ready: {self.local_directory}")
+        except Exception as e:
+            self.logger.error(f"Error creating local directory: {e}")
+    
+    def _get_index_paths(self, timestamp: str = None) -> tuple:
+        """Get index file paths based on configuration"""
+        if timestamp is None:
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        if self.use_timestamp:
+            index_filename = f"{self.filename_prefix}_{timestamp}.faiss"
+            docs_filename = f"{self.filename_prefix}_docs_{timestamp}.pkl"
+        else:
+            index_filename = f"{self.filename_prefix}.faiss"
+            docs_filename = f"{self.filename_prefix}_docs.pkl"
+        
+        index_path = os.path.join(self.local_directory, index_filename)
+        docs_path = os.path.join(self.local_directory, docs_filename)
+        
+        return index_path, docs_path
+    
+    def _cleanup_old_files(self):
+        """Clean up old index files based on max_local_files setting"""
+        try:
+            import glob
+            
+            # Get all index files
+            pattern = os.path.join(self.local_directory, f"{self.filename_prefix}_*.faiss")
+            index_files = glob.glob(pattern)
+            
+            if len(index_files) > self.max_local_files:
+                # Sort by modification time (oldest first)
+                index_files.sort(key=os.path.getmtime)
+                
+                # Remove oldest files
+                files_to_remove = index_files[:-self.max_local_files]
+                for file_path in files_to_remove:
+                    try:
+                        os.remove(file_path)
+                        # Also remove corresponding docs file
+                        docs_file = file_path.replace('.faiss', '_docs.pkl')
+                        if os.path.exists(docs_file):
+                            os.remove(docs_file)
+                        self.logger.info(f"Cleaned up old index file: {file_path}")
+                    except Exception as e:
+                        self.logger.warning(f"Could not remove {file_path}: {e}")
+                        
+        except Exception as e:
+            self.logger.warning(f"Error during cleanup: {e}")
     
     def create_index_from_yahoo_data(self, yahoo_data: Dict[str, Any]) -> bool:
         """
@@ -211,6 +275,10 @@ class FAISSManager:
             
             self.logger.info(f"Built FAISS index with {self.index.ntotal} vectors")
             
+            # Auto-save if enabled
+            if self.auto_save:
+                self.save_index_locally()
+            
         except Exception as e:
             self.logger.error(f"Error building FAISS index: {str(e)}")
             raise
@@ -254,9 +322,48 @@ class FAISSManager:
             self.logger.error(f"Error searching index: {str(e)}")
             return []
     
+    def save_index_locally(self, timestamp: str = None) -> bool:
+        """
+        Save FAISS index and documents to local directory using configuration
+        
+        Args:
+            timestamp: Optional timestamp for filename
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if self.index is None:
+                self.logger.warning("No index to save")
+                return False
+            
+            # Get paths based on configuration
+            index_path, docs_path = self._get_index_paths(timestamp)
+            
+            # Save FAISS index
+            faiss.write_index(self.index, index_path)
+            
+            # Save documents and metadata
+            with open(docs_path, 'wb') as f:
+                pickle.dump({
+                    'documents': self.documents,
+                    'metadata': self.document_metadata
+                }, f)
+            
+            self.logger.info(f"Saved index to {index_path} and documents to {docs_path}")
+            
+            # Cleanup old files if needed
+            self._cleanup_old_files()
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error saving index locally: {str(e)}")
+            return False
+    
     def save_index(self, index_path: str, docs_path: str) -> bool:
         """
-        Save FAISS index and documents to disk
+        Save FAISS index and documents to specified paths (legacy method)
         
         Args:
             index_path: Path to save FAISS index
@@ -319,15 +426,89 @@ class FAISSManager:
             self.logger.error(f"Error loading index: {str(e)}")
             return False
     
+    def load_latest_index(self) -> bool:
+        """Load the most recent index from local directory"""
+        try:
+            import glob
+            
+            # Find the most recent index file
+            pattern = os.path.join(self.local_directory, f"{self.filename_prefix}_*.faiss")
+            index_files = glob.glob(pattern)
+            
+            if not index_files:
+                self.logger.warning("No index files found in local directory")
+                return False
+            
+            # Get the most recent file
+            latest_index = max(index_files, key=os.path.getmtime)
+            latest_docs = latest_index.replace('.faiss', '_docs.pkl')
+            
+            if not os.path.exists(latest_docs):
+                self.logger.error(f"Corresponding docs file not found: {latest_docs}")
+                return False
+            
+            # Load the index
+            success = self.load_index(latest_index, latest_docs)
+            if success:
+                self.logger.info(f"Loaded latest index: {latest_index}")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"Error loading latest index: {e}")
+            return False
+    
     def get_index_info(self) -> Dict[str, Any]:
         """Get information about the current index"""
         if self.index is None:
-            return {'status': 'no_index', 'total_vectors': 0, 'total_documents': 0}
+            return {
+                'status': 'no_index', 
+                'total_vectors': 0, 
+                'total_documents': 0,
+                'local_directory': self.local_directory,
+                'filename_prefix': self.filename_prefix,
+                'auto_save': self.auto_save
+            }
         
         return {
             'status': 'loaded',
             'total_vectors': self.index.ntotal,
             'total_documents': len(self.documents),
             'model_name': self.model_name,
-            'index_dimension': self.index_dimension
+            'index_dimension': self.index_dimension,
+            'local_directory': self.local_directory,
+            'filename_prefix': self.filename_prefix,
+            'auto_save': self.auto_save
         }
+    
+    def clear_old_indices(self) -> bool:
+        """Clear all old indices to force fresh indexing"""
+        try:
+            import glob
+            
+            # Find all old index files
+            index_pattern = os.path.join(self.local_directory, f"{self.filename_prefix}_*.faiss")
+            docs_pattern = os.path.join(self.local_directory, f"{self.filename_prefix}_docs_*.pkl")
+            
+            old_indices = glob.glob(index_pattern)
+            old_docs = glob.glob(docs_pattern)
+            
+            # Remove old files
+            for file_path in old_indices + old_docs:
+                try:
+                    os.remove(file_path)
+                    self.logger.info(f"Removed old index file: {file_path}")
+                except Exception as e:
+                    self.logger.warning(f"Could not remove {file_path}: {e}")
+            
+            # Clear current index
+            self.index = None
+            self.documents = []
+            self.document_metadata = []
+            
+            self.logger.info("Cleared all old indices - fresh indexing will be performed")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error clearing old indices: {e}")
+            return False

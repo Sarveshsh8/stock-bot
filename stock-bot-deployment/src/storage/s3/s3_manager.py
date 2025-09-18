@@ -25,6 +25,7 @@ class S3Manager:
         self.bucket_name = config['s3_settings']['bucket_name']
         self.region = config['s3_settings']['region']
         self.version_prefix = config['s3_settings']['version_prefix']
+        self.available = False  # Initialize availability flag
         
         self._setup_logging()
         self._setup_s3_client()
@@ -39,15 +40,24 @@ class S3Manager:
         try:
             self.s3_client = boto3.client('s3', region_name=self.region)
             self._verify_bucket_access()
+            self.available = True
         except NoCredentialsError:
-            self.logger.error("AWS credentials not found")
-            raise
+            self.logger.warning("AWS credentials not found - S3 operations will be disabled")
+            self.s3_client = None
+            self.available = False
         except Exception as e:
-            self.logger.error(f"Error setting up S3 client: {str(e)}")
-            raise
+            self.logger.warning(f"Error setting up S3 client: {str(e)} - S3 operations will be disabled")
+            self.s3_client = None
+            self.available = False
+    
+    def is_available(self) -> bool:
+        """Check if S3 is available"""
+        return self.available and self.s3_client is not None
     
     def _verify_bucket_access(self):
         """Verify bucket access and create if needed"""
+        if not self.available:
+            return
         try:
             self.s3_client.head_bucket(Bucket=self.bucket_name)
             self.logger.info(f"Bucket {self.bucket_name} exists and is accessible")

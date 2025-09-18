@@ -1,243 +1,163 @@
-# Stock Bot V3 - Unified Financial Analysis Platform
+# Stock Bot - Financial Analysis Application
 
-##  Overview
-A comprehensive AI-powered financial analysis platform that combines:
-- **Yahoo Finance data fetching** (configurable via config.yaml)
-- **Multi-modal file uploads** (documents, images, videos, audio)
-- **S3 storage with versioning**
-- **FAISS vector indexing**
-- **Intelligent Q&A system**
-- **Kubernetes deployment ready**
+A clean, modular financial analysis application that processes market data, documents, and videos using AI-powered analysis.
 
-##  Features
-- **Configurable Data Sources**: Select ETFs/stocks via config.yaml
-- **File Upload Support**: Documents, images, videos, audio for analysis
-- **S3 Storage**: Organized storage with version management
-- **Vector Search**: FAISS-based semantic search
-- **Multi-Modal AI**: AWS Bedrock Nova Pro integration (separate modules for images/videos)
-- **Web Interface**: Streamlit + Flask API
-- **Kubernetes Ready**: Complete K8s deployment with persistent storage
-- **Modular Architecture**: Class-based, professional code structure
+## Features
 
-##  Architecture
-```
-User Input → Data Pipeline → S3 Storage → FAISS Index → Q&A System
-     ↓              ↓            ↓           ↓           ↓
-Config.yaml → YF Data + Files → Versioned → Vector DB → AI Response
-```
+- **📁 File Upload**: Upload and analyze financial documents, charts, and videos
+- **📈 Market Data**: Fetch real-time data from Yahoo Finance
+- **🎬 YouTube Analysis**: Download and analyze YouTube financial videos
+- **❓ Q&A System**: Ask questions about your financial data with AI-powered answers
+- **🔍 Vector Search**: FAISS-based knowledge base for intelligent retrieval
 
-##  Project Structure
-```
-stock-bot-v3/
- src/                           # Source code (modular, class-based)
-    data/                      # Data handling modules
-       fetchers/              # Yahoo Finance fetcher
-       processors/            # File processors
-    storage/                   # Storage management
-       s3/                    # S3 operations
-    ai/                        # AI/ML modules
-       faiss/                 # Vector database
-       bedrock/               # AWS Bedrock integration
-          image/             # Image analysis
-          video/             # Video analysis
-       prompts/               # Specialized prompts
-    web/                       # Web interfaces
- k8s/                           # Kubernetes manifests
- unified_pipeline.py            # Main pipeline orchestrator
- web_app.py                     # Streamlit web interface
- Dockerfile                     # Container definition
- docker-compose.yml             # Local development
- deploy.sh                      # K8s deployment script
- control.sh                     # Application control script
- config.yaml                    # Configuration file
-```
+## Quick Start
 
-##  Quick Start
+### 1. Setup Environment
 
-### Local Development
-1. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-2. **Configure AWS credentials**:
-   ```bash
-   cp env_example.txt .env
-   # Edit .env with your AWS credentials
-   ```
-
-3. **Run the pipeline**:
-   ```bash
-   python unified_pipeline.py
-   ```
-
-4. **Start web interface**:
-   ```bash
-   streamlit run web_app.py
-   ```
-
-### Docker Deployment
 ```bash
-# Build and run with Docker Compose
-docker-compose up --build
+# Clone or navigate to the project directory
+cd stock-bot-deployment
+
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### Kubernetes Deployment
-1. **Update secrets**:
-   ```bash
-   # Edit k8s/secrets.yaml with your AWS credentials
-   ```
+### 2. Configuration
 
-2. **Deploy to Kubernetes**:
-   ```bash
-   ./deploy.sh
-   ```
+Copy the environment template and configure your settings:
 
-3. **Control the application**:
-   ```bash
-   ./control.sh start    # Start the app
-   ./control.sh status   # Check status
-   ./control.sh urls     # Get URLs
-   ./control.sh logs     # View logs
-   ```
-
-##  Configuration
-
-### config.yaml Structure
-```yaml
-# ETFs and Stocks to fetch
-etfs:
-  - symbol: "SPY"
-    name: "SPDR S&P 500 ETF Trust"
-    category: "US Large Cap"
-
-stocks:
-  - symbol: "AAPL"
-    name: "Apple Inc."
-    category: "Technology"
-
-# System settings
-data_settings:
-  default_period_months: 6
-
-s3_settings:
-  bucket_name: "stock-bot-v3-data"
-  version_prefix: "v1.0"
-
-faiss_settings:
-  model_name: "all-MiniLM-L6-v2"
-  chunk_size: 1000
-
-bedrock_settings:
-  region: "us-east-1"
-  nova_pro_arn: "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0"
-```
-
-##  Usage Examples
-
-### Command Line
 ```bash
-# Run full pipeline
-python unified_pipeline.py
-
-# Process specific files
-python unified_pipeline.py --files document.pdf image.png
-
-# Query the system
-python unified_pipeline.py --query "What was Apple's Q4 performance?"
-
-# Check system status
-python unified_pipeline.py --status
+cp env_example.txt .env
 ```
 
-### Web Interface
-- **Dashboard**: Overview of configured symbols and system status
-- **Data Pipeline**: Run the complete data fetching and indexing pipeline
-- **File Upload**: Upload and process documents, images, videos
-- **Q&A System**: Ask questions about your financial data
-- **System Status**: Monitor system health and configuration
-
-### Programmatic Usage
-```python
-from unified_pipeline import UnifiedPipeline
-
-# Initialize pipeline
-pipeline = UnifiedPipeline('config.yaml')
-
-# Run full pipeline
-results = pipeline.run_full_pipeline(['document.pdf', 'chart.png'])
-
-# Query system
-answers = pipeline.query_system("What are the top performing stocks?")
+Edit `.env` with your AWS credentials:
+```
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_DEFAULT_REGION=us-east-1
 ```
 
-##  AI Analysis Capabilities
+### 3. Run Tests
 
-### Image Analysis
-- **Financial Charts**: Technical analysis, support/resistance levels
-- **Earnings Charts**: Revenue trends, performance metrics
-- **General Images**: Business context and market implications
+Test the application to ensure everything works:
 
-### Video Analysis
-- **Earnings Calls**: Management insights, strategic initiatives
-- **Market Analysis**: Trading signals, market outlook
-- **General Videos**: Financial content analysis
-
-### Text Analysis
-- **Financial Data**: Performance evaluation, risk assessment
-- **Market Data**: Trend analysis, investment opportunities
-- **Earnings Data**: Business insights, growth prospects
-
-##  Kubernetes Features
-
-### Deployment Components
-- **Namespace**: Isolated environment
-- **ConfigMap**: Application configuration
-- **Secrets**: AWS credentials management
-- **Deployment**: Application pods with health checks
-- **Service**: LoadBalancer for external access
-- **PVC**: Persistent storage for data
-
-### Control Commands
 ```bash
-./control.sh start     # Start application
-./control.sh stop      # Stop application
-./control.sh restart   # Restart application
-./control.sh status    # Show status
-./control.sh urls      # Get service URLs
-./control.sh logs      # View logs
-./control.sh cleanup   # Delete all resources
+python test_app.py
 ```
 
-##  Data Flow Example
+### 4. Start Application
 
-1. **User uploads** `apple_earnings.pdf` and `stock_chart.png`
-2. **Config.yaml** specifies `AAPL`, `MSFT`, `SPY` to fetch
-3. **Pipeline runs:**
-   - Fetches 6 months of YF data for AAPL, MSFT, SPY
-   - Processes PDF and image files with Bedrock
-   - Stores everything in S3: `v1.0/yahoo_finance/`, `v1.0/documents/`, `v1.0/images/`
-   - Creates FAISS index with all data
-4. **User asks:** "What was Apple's recent performance?"
-5. **System returns:** Relevant data from YF, PDF analysis, and chart insights
+```bash
+streamlit run main.py
+```
 
-##  Security & Best Practices
+The application will be available at: http://localhost:8501
 
-- **AWS IAM**: Proper permissions for Bedrock and S3
-- **Kubernetes Secrets**: Secure credential management
-- **Network Isolation**: Namespace-based isolation
-- **Health Checks**: Application monitoring
-- **Resource Limits**: CPU and memory constraints
+## Project Structure
 
-##  Benefits
+```
+stock-bot-deployment/
+├── main.py                 # Main Streamlit application
+├── test_app.py            # Test suite
+├── config.yaml            # Configuration file
+├── requirements.txt       # Python dependencies
+├── .env                   # Environment variables (create from env_example.txt)
+├── src/                   # Source code
+│   ├── ai/               # AI components
+│   │   ├── faiss/        # Vector database
+│   │   ├── bedrock/      # AWS Bedrock integration
+│   │   ├── prompts/      # AI prompts
+│   │   ├── qa_system.py  # Q&A system
+│   │   └── unified_pipeline.py  # Main pipeline
+│   ├── data/             # Data processing
+│   └── storage/          # Storage management
+├── indices/              # FAISS index storage
+├── data/                 # Data files
+└── logs/                 # Application logs
+```
 
-1. **Self-contained**: No imports from V1 or V2
-2. **Modular**: Easy to maintain and extend
-3. **Class-based**: Professional, object-oriented design
-4. **Versioned**: S3 storage with version management
-5. **Unified**: Single system for all data types
-6. **Scalable**: Kubernetes-ready for production
-7. **User-friendly**: Web interface for non-technical users
-8. **Production-ready**: Complete deployment automation
+## Configuration
 
-This Stock Bot V3 system provides a complete, professional-grade financial analysis platform that combines the best of both V1 and V2 while being completely self-contained, modular, and Kubernetes-ready! 
+Edit `config.yaml` to customize:
+
+- **Stocks/ETFs**: Add symbols to track
+- **FAISS Settings**: Vector database configuration
+- **Storage**: Local and S3 storage settings
+- **Bedrock**: AWS AI model settings
+
+## Usage
+
+### Upload Files
+1. Go to the "Upload Files" tab
+2. Upload financial documents, charts, or videos
+3. Click "Process Files" to analyze with AI
+
+### Market Data
+1. Go to the "Market Data" tab
+2. Click "Fetch Market Data" to get real-time data
+3. View price metrics and performance
+
+### YouTube Analysis
+1. Go to the "YouTube" tab
+2. Paste a YouTube URL
+3. Click "Download & Analyze" for detailed analysis
+
+### Q&A System
+1. Create a knowledge index first
+2. Go to the "Q&A" tab
+3. Ask questions about your data
+4. Get AI-powered answers
+
+## Testing
+
+Run the test suite to verify everything works:
+
+```bash
+python test_app.py
+```
+
+This will test:
+- Import functionality
+- Configuration loading
+- Pipeline initialization
+- Basic functionality
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Import Errors**: Make sure you're in the correct directory and virtual environment is activated
+2. **AWS Errors**: Verify your `.env` file has correct AWS credentials
+3. **Config Errors**: Check that `config.yaml` exists and is properly formatted
+
+### Dependencies
+
+If you encounter missing dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Development
+
+### Adding New Features
+
+1. Create new modules in the `src/` directory
+2. Update the unified pipeline to include new functionality
+3. Add tests to `test_app.py`
+4. Update the main application interface
+
+### Code Structure
+
+- **Modular Design**: Each component is self-contained
+- **Error Handling**: Graceful handling of missing optional components
+- **Configuration**: All settings in `config.yaml`
+- **Testing**: Comprehensive test suite included
+
+## License
+
+This project is for educational and development purposes.

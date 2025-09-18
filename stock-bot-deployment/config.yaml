@@ -64,9 +64,18 @@ faiss_settings:
   index_dimension: 384
   chunk_size: 1000
   overlap_size: 200
+  
+  # Index storage settings
+  storage:
+    local_directory: "indices"  # Local directory for saving indices
+    filename_prefix: "financial_index"  # Prefix for index files
+    use_timestamp: true  # Add timestamp to filenames
+    auto_save: true  # Automatically save index after creation
+    max_local_files: 10  # Maximum number of local index files to keep
 
 # AWS Bedrock settings
 bedrock_settings:
   region: "us-east-1"
   nova_pro_arn: "arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0"
   max_tokens: 4000
+

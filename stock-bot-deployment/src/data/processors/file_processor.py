@@ -11,6 +11,19 @@ from pathlib import Path
 import logging
 import pandas as pd
 
+# Document processing imports
+try:
+    import PyPDF2
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
+try:
+    from docx import Document
+    DOCX_AVAILABLE = True
+except ImportError:
+    DOCX_AVAILABLE = False
+
 class FileProcessor:
     """Processes uploaded files for analysis"""
     
@@ -23,10 +36,10 @@ class FileProcessor:
         """
         self.config = config
         self.supported_formats = {
-            'documents': ['.pdf', '.txt', '.doc', '.docx', '.xlsx', '.csv'],
-            'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff'],
-            'videos': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm'],
-            'audio': ['.mp3', '.wav', '.flac', '.aac', '.ogg']
+            'documents': ['.pdf', '.txt', '.doc', '.docx', '.xlsx', '.csv', '.xls', '.rtf', '.odt'],
+            'images': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp'],
+            'videos': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv'],
+            'audio': ['.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a']
         }
         self._setup_logging()
     
@@ -72,9 +85,11 @@ class FileProcessor:
             
             if file_ext == '.pdf':
                 return self._process_pdf(file_path)
-            elif file_ext in ['.txt']:
+            elif file_ext in ['.txt', '.rtf']:
                 return self._process_text(file_path)
-            elif file_ext in ['.xlsx', '.csv']:
+            elif file_ext in ['.docx']:
+                return self._process_docx(file_path)
+            elif file_ext in ['.xlsx', '.csv', '.xls']:
                 return self._process_spreadsheet(file_path)
             else:
                 return self._process_generic_document(file_path)
@@ -184,16 +199,100 @@ class FileProcessor:
     
     def _process_pdf(self, file_path: str) -> Dict[str, Any]:
         """Process PDF files"""
-        # For now, return basic info - can be extended with PyPDF2 or similar
-        return {
-            'content': f"PDF file: {Path(file_path).name}",
-            'metadata': {
-                'file_name': Path(file_path).name,
-                'file_size': os.path.getsize(file_path),
-                'file_type': 'document',
-                'format': '.pdf'
+        if not PDF_AVAILABLE:
+            return {
+                'content': f"PDF file: {Path(file_path).name} (PDF processing not available - install PyPDF2)",
+                'metadata': {
+                    'file_name': Path(file_path).name,
+                    'file_size': os.path.getsize(file_path),
+                    'file_type': 'document',
+                    'format': '.pdf',
+                    'error': 'PDF processing library not available'
+                }
             }
-        }
+        
+        try:
+            content = ""
+            page_count = 0
+            
+            with open(file_path, 'rb') as file:
+                pdf_reader = PyPDF2.PdfReader(file)
+                page_count = len(pdf_reader.pages)
+                
+                for page_num in range(page_count):
+                    page = pdf_reader.pages[page_num]
+                    content += page.extract_text() + "\n"
+            
+            return {
+                'content': content.strip(),
+                'metadata': {
+                    'file_name': Path(file_path).name,
+                    'file_size': os.path.getsize(file_path),
+                    'file_type': 'document',
+                    'format': '.pdf',
+                    'page_count': page_count,
+                    'word_count': len(content.split()) if content else 0
+                }
+            }
+        except Exception as e:
+            self.logger.error(f"Error processing PDF {file_path}: {str(e)}")
+            return {
+                'content': f"Error processing PDF: {str(e)}",
+                'metadata': {
+                    'file_name': Path(file_path).name,
+                    'file_size': os.path.getsize(file_path),
+                    'file_type': 'document',
+                    'format': '.pdf',
+                    'error': str(e)
+                }
+            }
+    
+    def _process_docx(self, file_path: str) -> Dict[str, Any]:
+        """Process Word document files"""
+        if not DOCX_AVAILABLE:
+            return {
+                'content': f"Word document: {Path(file_path).name} (Word processing not available - install python-docx)",
+                'metadata': {
+                    'file_name': Path(file_path).name,
+                    'file_size': os.path.getsize(file_path),
+                    'file_type': 'document',
+                    'format': '.docx',
+                    'error': 'Word processing library not available'
+                }
+            }
+        
+        try:
+            doc = Document(file_path)
+            content = ""
+            paragraph_count = 0
+            
+            for paragraph in doc.paragraphs:
+                content += paragraph.text + "\n"
+                paragraph_count += 1
+            
+            return {
+                'content': content.strip(),
+                'metadata': {
+                    'file_name': Path(file_path).name,
+                    'file_size': os.path.getsize(file_path),
+                    'file_type': 'document',
+                    'format': '.docx',
+                    'paragraph_count': paragraph_count,
+                    'word_count': len(content.split()) if content else 0
+                }
+            }
+        except Exception as e:
+            self.logger.error(f"Error processing Word document {file_path}: {str(e)}")
+            return {
+                'content': f"Error processing Word document: {str(e)}",
+                'metadata': {
+                    'file_name': Path(file_path).name,
+                    'file_size': os.path.getsize(file_path),
+                    'file_type': 'document',
+                    'format': '.docx',
+                    'error': str(e)
+                }
+            }
     
     def _process_text(self, file_path: str) -> Dict[str, Any]:
         """Process text files"""
@@ -207,7 +306,8 @@ class FileProcessor:
                     'file_name': Path(file_path).name,
                     'file_size': os.path.getsize(file_path),
                     'file_type': 'document',
-                    'format': '.txt'
+                    'format': Path(file_path).suffix.lower(),
+                    'word_count': len(content.split()) if content else 0
                 }
             }
         except Exception as e:
@@ -218,7 +318,7 @@ class FileProcessor:
         try:
             file_ext = Path(file_path).suffix.lower()
             
-            if file_ext == '.xlsx':
+            if file_ext in ['.xlsx', '.xls']:
                 df = pd.read_excel(file_path)
             elif file_ext == '.csv':
                 df = pd.read_csv(file_path)

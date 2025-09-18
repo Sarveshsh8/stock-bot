@@ -54,7 +54,7 @@ class YouTubeDownloader:
             Tuple of (success, file_path, metadata)
         """
         try:
-            print(f"🎬 Starting YouTube download: {url}")
+            print(f" Starting YouTube download: {url}")
             self.logger.info(f"Starting YouTube download: {url}")
             
             # Create temporary directory if none specified
@@ -73,7 +73,7 @@ class YouTubeDownloader:
                 uploader = info.get('uploader', 'Unknown')
                 view_count = info.get('view_count', 0)
                 
-                print(f"📺 Video Info:")
+                print(f" Video Info:")
                 print(f"   Title: {video_title}")
                 print(f"   Duration: {duration // 60}:{duration % 60:02d}")
                 print(f"   Uploader: {uploader}")
@@ -81,10 +81,10 @@ class YouTubeDownloader:
                 
                 # Check duration (limit to 30 minutes for analysis)
                 if duration > 1800:  # 30 minutes
-                    print(f"⚠️  Warning: Video is {duration // 60} minutes long. Analysis may take longer.")
+                    print(f"  Warning: Video is {duration // 60} minutes long. Analysis may take longer.")
             
             # Download the video
-            print("⬇️  Downloading video...")
+            print("  Downloading video...")
             with yt_dlp.YoutubeDL(self.ydl_opts) as ydl:
                 ydl.download([url])
             
@@ -97,7 +97,7 @@ class YouTubeDownloader:
             video_file = os.path.join(output_dir, downloaded_files[0])
             file_size = os.path.getsize(video_file)
             
-            print(f"✅ Download completed: {downloaded_files[0]} ({file_size / (1024*1024):.2f} MB)")
+            print(f" Download completed: {downloaded_files[0]} ({file_size / (1024*1024):.2f} MB)")
             
             metadata = {
                 'title': video_title,
@@ -114,7 +114,7 @@ class YouTubeDownloader:
             
         except Exception as e:
             error_msg = f"Error downloading video: {str(e)}"
-            print(f"❌ {error_msg}")
+            print(f" {error_msg}")
             self.logger.error(error_msg)
             return False, "", {}
     
