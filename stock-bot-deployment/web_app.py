@@ -22,6 +22,7 @@ from ai.bedrock.video.video_analyzer import VideoAnalyzer
 from ai.bedrock.image.image_analyzer import ImageAnalyzer
 from ai.prompts.qa_prompts import get_prompt
 from ai.prompts.financial_prompts import get_video_prompt, get_image_prompt
+from data.downloaders.youtube_downloader import YouTubeDownloader
 import boto3
 
 # Load environment variables from .env file
@@ -128,16 +129,65 @@ def get_simple_answer(query, search_results):
     except Exception as e:
         return f"Error generating answer: {str(e)}"
 
+def download_youtube_video(url: str, config: dict) -> tuple:
+    """Download YouTube video and return file path and metadata"""
+    try:
+        st.info(f"🎬 Processing YouTube URL: {url}")
+        
+        # Initialize YouTube downloader
+        downloader = YouTubeDownloader(config)
+        
+        # Validate URL
+        if not downloader.validate_url(url):
+            st.error("❌ Invalid YouTube URL. Please provide a valid YouTube link.")
+            return None, None
+        
+        # Get video info first
+        with st.spinner("📺 Getting video information..."):
+            video_info = downloader.get_video_info(url)
+            
+        if not video_info:
+            st.error("❌ Could not retrieve video information. Please check the URL.")
+            return None, None
+        
+        # Show video info
+        st.success(f"✅ Found video: {video_info['title']}")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Duration", f"{video_info['duration'] // 60}:{video_info['duration'] % 60:02d}")
+        with col2:
+            st.metric("Uploader", video_info['uploader'])
+        with col3:
+            st.metric("Views", f"{video_info['view_count']:,}")
+        
+        # Download the video
+        with st.spinner("⬇️ Downloading video (this may take a few minutes)..."):
+            success, file_path, metadata = downloader.download_video(url)
+        
+        if success:
+            st.success(f"✅ Video downloaded successfully!")
+            return file_path, metadata
+        else:
+            st.error("❌ Failed to download video. Please try again.")
+            return None, None
+            
+    except Exception as e:
+        st.error(f"❌ Error downloading YouTube video: {str(e)}")
+        return None, None
+
 def process_uploaded_files(uploaded_files):
     """Process uploaded files with Nova Pro analyzers"""
     try:
+        st.info(f"🔄 Processing {len(uploaded_files)} uploaded files...")
         success, video_analyzer, image_analyzer = setup_analyzers()
         if not success:
+            st.error("❌ Failed to setup Nova Pro analyzers")
             return []
         
         processed_files = []
         
-        for uploaded_file in uploaded_files:
+        for i, uploaded_file in enumerate(uploaded_files, 1):
+            st.write(f"📁 Processing file {i}/{len(uploaded_files)}: {uploaded_file.name}")
             # Save file temporarily with proper extension
             file_ext = os.path.splitext(uploaded_file.name)[1].lower()
             with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext, mode='wb') as tmp_file:
@@ -147,8 +197,38 @@ def process_uploaded_files(uploaded_files):
             try:
                 if file_ext in ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm', '.mkv']:
                     # Process video with Nova Pro
+                    st.write(f"🎥 Analyzing video: {uploaded_file.name}")
                     video_prompt = get_video_prompt("general_financial")
-                    analysis = video_analyzer.analyze_video(tmp_path, video_prompt)
+                    
+                    with st.spinner("Running Nova Pro video analysis..."):
+                        analysis = video_analyzer.analyze_video(tmp_path, video_prompt)
+                    
+                    st.success(f"✅ Video analysis completed for {uploaded_file.name}")
+                    
+                    # Show analysis result prominently
+                    st.markdown("### 🤖 AI Analysis Result")
+                    st.markdown("---")
+                    
+                    # Display analysis in a styled container
+                    st.markdown(f"""
+                    <div style="
+                        background-color: #f0f2f6;
+                        padding: 20px;
+                        border-radius: 10px;
+                        border-left: 5px solid #1f77b4;
+                        margin: 10px 0;
+                    ">
+                        <h4 style="color: #1f77b4; margin-top: 0;">📝 Nova Pro Analysis Output:</h4>
+                        <div style="background-color: white; padding: 15px; border-radius: 5px; margin-top: 10px; color: #262730; font-size: 14px; line-height: 1.6;">
+                            {analysis.replace(chr(10), '<br>')}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Also show in expander for detailed view
+                    with st.expander(f"🔍 Detailed Analysis View: {uploaded_file.name}"):
+                        st.write("**Raw Analysis Output:**")
+                        st.code(analysis, language=None)
                     
                     processed_files.append({
                         'content': analysis,
@@ -162,8 +242,38 @@ def process_uploaded_files(uploaded_files):
                     
                 elif file_ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp']:
                     # Process image with Nova Pro
+                    st.write(f"🖼️ Analyzing image: {uploaded_file.name}")
                     image_prompt = get_image_prompt("general_financial")
-                    analysis = image_analyzer.analyze_image(tmp_path, image_prompt)
+                    
+                    with st.spinner("Running Nova Pro image analysis..."):
+                        analysis = image_analyzer.analyze_image(tmp_path, image_prompt)
+                    
+                    st.success(f"✅ Image analysis completed for {uploaded_file.name}")
+                    
+                    # Show analysis result prominently
+                    st.markdown("### 🤖 AI Analysis Result")
+                    st.markdown("---")
+                    
+                    # Display analysis in a styled container
+                    st.markdown(f"""
+                    <div style="
+                        background-color: #f0f2f6;
+                        padding: 20px;
+                        border-radius: 10px;
+                        border-left: 5px solid #ff7f0e;
+                        margin: 10px 0;
+                    ">
+                        <h4 style="color: #ff7f0e; margin-top: 0;">📝 Nova Pro Analysis Output:</h4>
+                        <div style="background-color: white; padding: 15px; border-radius: 5px; margin-top: 10px; color: #262730; font-size: 14px; line-height: 1.6;">
+                            {analysis.replace(chr(10), '<br>')}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    # Also show in expander for detailed view
+                    with st.expander(f"🔍 Detailed Analysis View: {uploaded_file.name}"):
+                        st.write("**Raw Analysis Output:**")
+                        st.code(analysis, language=None)
                     
                     processed_files.append({
                         'content': analysis,
@@ -343,16 +453,18 @@ def upload_faiss_to_s3(bucket_name="stock-bot-v3-index"):
                 Body=f,
                 ContentType='application/octet-stream'
             )
-                    
-                    # Clean up temp files
-        os.unlink(temp_index_path)
-        os.unlink(temp_docs_path)
-                        
-        st.success(f"✅ FAISS index uploaded to S3: s3://{bucket_name}/indexes/{timestamp}/")
-        return True
+        # Clean up temp files
+        try:
+            os.unlink(temp_index_path)
+            os.unlink(temp_docs_path)
+        except Exception as cleanup_err:
+            st.warning(f"Temporary file cleanup failed: {str(cleanup_err)}")
         
+        st.success(f"FAISS index uploaded to S3: s3://{bucket_name}/indexes/{timestamp}/")
+        return True
+
     except Exception as e:
-        st.error(f"❌ S3 upload failed: {str(e)}")
+        st.error(f"S3 upload failed: {str(e)}")
         return False
 
 def search_index(query, index_data, k=5):
@@ -390,6 +502,106 @@ def main():
         st.session_state.uploaded_files = uploaded_files
         st.write(f"Uploaded: {len(uploaded_files)} files")
     
+    # YouTube URL input
+    st.write("---")
+    st.subheader("🎬 YouTube Video Analysis")
+    youtube_url = st.text_input(
+        "Enter YouTube URL:",
+        placeholder="https://www.youtube.com/watch?v=...",
+        help="Paste a YouTube video URL to download and analyze"
+    )
+    
+    if youtube_url:
+        if st.button("📥 Download & Analyze YouTube Video"):
+            config = load_config()
+            if config:
+                file_path, metadata = download_youtube_video(youtube_url, config)
+                if file_path and metadata:
+                    # Process the downloaded video
+                    st.write("🎥 Analyzing downloaded video...")
+                    success, video_analyzer, image_analyzer = setup_analyzers()
+                    
+                    if success:
+                        video_prompt = get_video_prompt("general_financial")
+                        
+                        with st.spinner("Running Nova Pro video analysis..."):
+                            analysis = video_analyzer.analyze_video(file_path, video_prompt)
+                        
+                        st.success("✅ YouTube video analysis completed!")
+                        
+                        # Show analysis result prominently
+                        st.subheader("📹 YouTube Video Analysis Results")
+                        
+                        # Video information in columns
+                        col1, col2 = st.columns([2, 1])
+                        
+                        with col1:
+                            st.markdown("### 📺 Video Information")
+                            st.info(f"**Title:** {metadata.get('title', 'Unknown')}")
+                            st.info(f"**Uploader:** {metadata.get('uploader', 'Unknown')}")
+                            st.info(f"**Duration:** {metadata.get('duration', 0) // 60}:{metadata.get('duration', 0) % 60:02d}")
+                            st.info(f"**Views:** {metadata.get('view_count', 0):,}")
+                            st.info(f"**URL:** {metadata.get('url', '')}")
+                        
+                        with col2:
+                            st.markdown("### 📊 Analysis Status")
+                            st.success("✅ Download Complete")
+                            st.success("✅ Analysis Complete")
+                            st.success("✅ Ready for Indexing")
+                        
+                        # Main analysis result in a prominent box
+                        st.markdown("### 🤖 AI Analysis Result")
+                        st.markdown("---")
+                        
+                        # Display analysis in a styled container
+                        st.markdown(f"""
+                        <div style="
+                            background-color: #f0f2f6;
+                            padding: 20px;
+                            border-radius: 10px;
+                            border-left: 5px solid #1f77b4;
+                            margin: 10px 0;
+                        ">
+                            <h4 style="color: #1f77b4; margin-top: 0;">📝 Nova Pro Analysis Output:</h4>
+                            <div style="background-color: white; padding: 15px; border-radius: 5px; margin-top: 10px; color: #262730; font-size: 14px; line-height: 1.6;">
+                                {analysis.replace(chr(10), '<br>')}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Also show in expander for detailed view
+                        with st.expander("🔍 Detailed Analysis View"):
+                            st.write("**Raw Analysis Output:**")
+                            st.code(analysis, language=None)
+                        
+                        # Store for indexing
+                        if 'youtube_analyses' not in st.session_state:
+                            st.session_state.youtube_analyses = []
+                        
+                        st.session_state.youtube_analyses.append({
+                            'content': analysis,
+                            'metadata': {
+                                'file_name': f"youtube_{metadata.get('title', 'video')}",
+                                'file_type': 'youtube_video',
+                                'file_size': metadata.get('file_size', 0),
+                                'source': 'youtube_download',
+                                'youtube_metadata': metadata
+                            }
+                        })
+                        
+                        # Clean up downloaded file
+                        try:
+                            os.unlink(file_path)
+                            os.rmdir(os.path.dirname(file_path))
+                        except:
+                            pass
+                    else:
+                        st.error("❌ Failed to setup video analyzer")
+                else:
+                    st.error("❌ Failed to download YouTube video")
+            else:
+                st.error("❌ Failed to load configuration")
+    
     # Yahoo Finance
     config = load_config()
     if config:
@@ -410,8 +622,9 @@ def main():
     if st.button("Create FAISS Index & Store in S3"):
         uploaded_files = getattr(st.session_state, 'uploaded_files', [])
         yahoo_data = getattr(st.session_state, 'yahoo_data', {})
+        youtube_analyses = getattr(st.session_state, 'youtube_analyses', [])
         
-        if uploaded_files or yahoo_data:
+        if uploaded_files or yahoo_data or youtube_analyses:
             with st.spinner("Processing files with Nova Pro and creating FAISS index..."):
                 if setup_faiss_manager():
                     # Process uploaded files with Nova Pro
@@ -419,10 +632,17 @@ def main():
                     if uploaded_files:
                         processed_files = process_uploaded_files(uploaded_files)
                     
+                    # Add YouTube analyses to processed files
+                    if youtube_analyses:
+                        processed_files.extend(youtube_analyses)
+                        st.info(f"📺 Including {len(youtube_analyses)} YouTube video analyses in index")
+                    
                     # Create index from processed files
                     if processed_files:
                         st.session_state.faiss_manager.create_index_from_files(processed_files)
                         st.session_state.index_created = True
+                        # Store processed files for display
+                        st.session_state.processed_files = processed_files
                     
                     # Create index from Yahoo data
                     if yahoo_data:
@@ -457,13 +677,77 @@ def main():
                             st.write(f"Type: {result['metadata'].get('source', 'unknown')}")
                             st.write("---")
     
+    # Analysis Results Summary
+    uploaded_files = getattr(st.session_state, 'uploaded_files', [])
+    youtube_analyses = getattr(st.session_state, 'youtube_analyses', [])
+    
+    if uploaded_files or youtube_analyses:
+        st.write("---")
+        st.subheader("📊 Analysis Results Summary")
+        
+        # Show YouTube analyses
+        if youtube_analyses:
+            st.markdown("### 🎬 YouTube Video Analyses")
+            for i, analysis in enumerate(youtube_analyses):
+                with st.expander(f"📹 {analysis['metadata'].get('youtube_metadata', {}).get('title', f'Video {i+1}')}"):
+                    st.write("**Video Info:**")
+                    youtube_meta = analysis['metadata'].get('youtube_metadata', {})
+                    st.write(f"- Title: {youtube_meta.get('title', 'Unknown')}")
+                    st.write(f"- Uploader: {youtube_meta.get('uploader', 'Unknown')}")
+                    st.write(f"- Duration: {youtube_meta.get('duration', 0) // 60}:{youtube_meta.get('duration', 0) % 60:02d}")
+                    st.write(f"- Views: {youtube_meta.get('view_count', 0):,}")
+                    
+                    st.write("**Analysis Result:**")
+                    st.markdown(f"""
+                    <div style="
+                        background-color: #f0f2f6;
+                        padding: 15px;
+                        border-radius: 5px;
+                        border-left: 3px solid #1f77b4;
+                        color: #262730;
+                        font-size: 14px;
+                        line-height: 1.6;
+                    ">
+                        {analysis['content'].replace(chr(10), '<br>')}
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        # Show uploaded file analyses (if any processed)
+        if hasattr(st.session_state, 'processed_files') and st.session_state.processed_files:
+            st.markdown("### 📁 Uploaded File Analyses")
+            for i, file_analysis in enumerate(st.session_state.processed_files):
+                if file_analysis['metadata'].get('source') == 'nova_pro_analysis':
+                    with st.expander(f"📄 {file_analysis['metadata'].get('file_name', f'File {i+1}')}"):
+                        st.write("**File Info:**")
+                        st.write(f"- Name: {file_analysis['metadata'].get('file_name', 'Unknown')}")
+                        st.write(f"- Type: {file_analysis['metadata'].get('file_type', 'Unknown')}")
+                        st.write(f"- Size: {file_analysis['metadata'].get('file_size', 0):,} bytes")
+                        
+                        st.write("**Analysis Result:**")
+                        color = "#1f77b4" if file_analysis['metadata'].get('file_type') == 'video' else "#ff7f0e"
+                        st.markdown(f"""
+                        <div style="
+                            background-color: #f0f2f6;
+                            padding: 15px;
+                            border-radius: 5px;
+                            border-left: 3px solid {color};
+                            color: #262730;
+                            font-size: 14px;
+                            line-height: 1.6;
+                        ">
+                            {file_analysis['content'].replace(chr(10), '<br>')}
+                        </div>
+                        """, unsafe_allow_html=True)
+
     # Status
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Files", len(getattr(st.session_state, 'uploaded_files', [])))
     with col2:
-        st.metric("Yahoo", len(getattr(st.session_state, 'yahoo_data', {})))
+        st.metric("YouTube", len(getattr(st.session_state, 'youtube_analyses', [])))
     with col3:
+        st.metric("Yahoo", len(getattr(st.session_state, 'yahoo_data', {})))
+    with col4:
         st.metric("Index", "Yes" if st.session_state.index_created else "No")
 
 

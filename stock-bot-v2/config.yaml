@@ -1,0 +1,132 @@
+# ETF and Stock Data Fetcher Configuration
+# Add or remove ETF/Stock symbols as needed
+# Only symbols listed below will be fetched
+
+# Exchange Traded Funds (ETFs)
+etfs:
+  # Major Market ETFs
+  - symbol: "SPY"
+    name: "SPDR S&P 500 ETF Trust"
+    category: "US Large Cap"
+    
+  # - symbol: "QQQ"
+  #   name: "Invesco QQQ Trust"
+  #   category: "US Technology"
+    
+  # Uncomment the ETFs you want to include:
+  # - symbol: "IWM"
+  #   name: "iShares Russell 2000 ETF"
+  #   category: "US Small Cap"
+    
+  # - symbol: "VTI"
+  #   name: "Vanguard Total Stock Market ETF"
+  #   category: "US Total Market"
+    
+  # International ETFs
+  # - symbol: "VEA"
+  #   name: "Vanguard FTSE Developed Markets ETF"
+  #   category: "International Developed"
+    
+  # - symbol: "VWO"
+  #   name: "Vanguard FTSE Emerging Markets ETF"
+  #   category: "International Emerging"
+    
+  # Bond ETF
+  # - symbol: "AGG"
+  #   name: "iShares Core U.S. Aggregate Bond ETF"
+  #   category: "US Bonds"
+    
+  # Commodity ETF
+  # - symbol: "GLD"
+  #   name: "SPDR Gold Trust"
+  #   category: "Commodities"
+    
+  # Sector ETFs
+  # - symbol: "XLF"
+  #   name: "Financial Select Sector SPDR Fund"
+  #   category: "Financial Sector"
+    
+  # - symbol: "XLK"
+  #   name: "Technology Select Sector SPDR Fund"
+  #   category: "Technology Sector"
+
+# Individual Stocks
+stocks:
+  # Tech Stocks
+  - symbol: "AAPL"
+    name: "Apple Inc."
+    category: "Technology"
+    
+  - symbol: "MSFT"
+    name: "Microsoft Corporation"
+    category: "Technology"
+    
+  # Uncomment stocks you want to include:
+  # - symbol: "GOOGL"
+  #   name: "Alphabet Inc. Class A"
+  #   category: "Technology"
+    
+  # - symbol: "AMZN"
+  #   name: "Amazon.com Inc."
+  #   category: "Consumer Discretionary"
+    
+  # - symbol: "TSLA"
+  #   name: "Tesla Inc."
+  #   category: "Automotive"
+    
+  # - symbol: "NVDA"
+  #   name: "NVIDIA Corporation"
+  #   category: "Technology"
+    
+  # - symbol: "META"
+  #   name: "Meta Platforms Inc."
+  #   category: "Technology"
+    
+  # - symbol: "NFLX"
+  #   name: "Netflix Inc."
+  #   category: "Communication Services"
+    
+  # - symbol: "JPM"
+  #   name: "JPMorgan Chase & Co."
+  #   category: "Financial Services"
+    
+  # - symbol: "JNJ"
+  #   name: "Johnson & Johnson"
+  #   category: "Healthcare"
+    
+  # - symbol: "PG"
+  #   name: "Procter & Gamble Co."
+  #   category: "Consumer Staples"
+
+# Data fetching settings
+data_settings:
+  default_period_months: 6
+  output_directory: "data"
+  excel_filename: "etf_raw_data.xlsx"
+  
+# Additional ETF symbols (commented out - uncomment to include)
+# Uncomment any of these to add them to the analysis:
+# additional_etfs:
+#   - symbol: "EFA"
+#     name: "iShares MSCI EAFE ETF"
+#     category: "International Developed"
+#     
+#   - symbol: "EEM"
+#     name: "iShares MSCI Emerging Markets ETF"
+#     category: "International Emerging"
+#     
+#   - symbol: "TLT"
+#     name: "iShares 20+ Year Treasury Bond ETF"
+#     category: "US Treasury Bonds"
+#     
+#   - symbol: "XLU"
+#     name: "Utilities Select Sector SPDR Fund"
+#     category: "Utilities Sector"
+#     
+#   - symbol: "XLE"
+#     name: "Energy Select Sector SPDR Fund"
+#     category: "Energy Sector"
+#     
+#   - symbol: "XLV"
+#     name: "Health Care Select Sector SPDR Fund"
+#     category: "Healthcare Sector"

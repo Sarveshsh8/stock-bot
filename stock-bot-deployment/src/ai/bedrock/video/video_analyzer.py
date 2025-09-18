@@ -70,18 +70,25 @@ class VideoAnalyzer:
             Analysis result
         """
         try:
+            print(f"🎥 Starting video analysis for: {os.path.basename(video_path)}")
             self.logger.info(f"Starting video analysis for: {video_path}")
             
-            # Check file size (25MB limit for Nova Pro)
+            # Check file size (100MB limit for Nova Pro)
             file_size = os.path.getsize(video_path)
-            if file_size > 25 * 1024 * 1024:
-                return f"Video file is too large ({file_size / (1024*1024):.2f} MB). Maximum supported size is 25 MB."
+            print(f"📊 Video Info: {os.path.basename(video_path)}, Size: {file_size / (1024*1024):.2f} MB")
+            
+            if file_size > 100 * 1024 * 1024:
+                error_msg = f"Video file is too large ({file_size / (1024*1024):.2f} MB). Maximum supported size is 100 MB."
+                print(f"❌ {error_msg}")
+                return error_msg
             
             # Encode video
+            print("🔄 Encoding video for analysis...")
             with open(video_path, "rb") as file:
                 encoded_video = base64.b64encode(file.read()).decode('utf-8')
             
             video_format = self._get_video_format(video_path)
+            print(f"✅ Video encoded successfully ({len(encoded_video):,} characters, Format: {video_format})")
             
             # Prepare request body
             body = {
@@ -107,6 +114,7 @@ class VideoAnalyzer:
             }
             
             # Send request to Bedrock
+            print("🚀 Sending request to AWS Bedrock Nova Pro...")
             response = self.bedrock_runtime.invoke_model(
                 modelId=self.model_id,
                 body=json.dumps(body),
@@ -116,18 +124,31 @@ class VideoAnalyzer:
             # Parse response
             response_body = json.loads(response['body'].read())
             result = response_body['output']['message']['content'][0]['text']
+            
+            print("✅ Video analysis completed successfully!")
+            print("=" * 60)
+            print("📝 VIDEO ANALYSIS RESULT:")
+            print("=" * 60)
+            print(result)
+            print("=" * 60)
+            
             self.logger.info("Video analysis completed successfully")
             return result
             
         except Exception as e:
+            print(f"❌ Error in video analysis: {str(e)}")
             self.logger.error(f"Error in video analysis: {str(e)}")
-            return self._fallback_video_analysis(video_path, prompt)
+            print("🔄 Attempting fallback analysis...")
+            fallback_result = self._fallback_video_analysis(video_path, prompt)
+            print("✅ Fallback analysis completed")
+            return fallback_result
     
     def _fallback_video_analysis(self, video_path: str, prompt: str) -> str:
         """Fallback text-based video analysis when multimodal API fails"""
         try:
             file_name = os.path.basename(video_path)
             file_size = os.path.getsize(video_path) / (1024*1024)
+            print(f"📝 Running fallback analysis for: {file_name} ({file_size:.2f} MB)")
             
             analysis_prompt = f"""You are a financial analyst examining video content about stock market and trading data.
 
@@ -168,7 +189,16 @@ Additional Context: {prompt}"""
             
             response_body = json.loads(response['body'].read())
             result = response_body['output']['message']['content'][0]['text']
+            
+            print("=" * 60)
+            print("📝 FALLBACK ANALYSIS RESULT:")
+            print("=" * 60)
+            print(f"Video analysis (text-based fallback): {result}")
+            print("=" * 60)
+            
             return f"Video analysis (text-based fallback): {result}"
             
         except Exception as e:
-            return f"Error in fallback analysis: {str(e)}"
+            error_msg = f"Error in fallback analysis: {str(e)}"
+            print(f"❌ {error_msg}")
+            return error_msg

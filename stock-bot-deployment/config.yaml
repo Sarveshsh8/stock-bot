@@ -13,13 +13,13 @@ etfs:
     category: "US Technology"
     
   # Uncomment ETFs you want to include:
-  # - symbol: "IWM"
-  #   name: "iShares Russell 2000 ETF"
-  #   category: "US Small Cap"
+  - symbol: "IWM"
+    name: "iShares Russell 2000 ETF"
+    category: "US Small Cap"
     
-  # - symbol: "VTI"
-  #   name: "Vanguard Total Stock Market ETF"
-  #   category: "US Total Market"
+  - symbol: "VTI"
+    name: "Vanguard Total Stock Market ETF"
+    category: "US Total Market"
 
 # Individual Stocks
 stocks:
@@ -33,13 +33,17 @@ stocks:
     category: "Technology"
     
   # Uncomment stocks you want to include:
-  # - symbol: "GOOGL"
-  #   name: "Alphabet Inc. Class A"
-  #   category: "Technology"
+  - symbol: "GOOGL"
+    name: "Alphabet Inc. Class A"
+    category: "Technology"
     
-  # - symbol: "AMZN"
-  #   name: "Amazon.com Inc."
-  #   category: "Consumer Discretionary"
+  - symbol: "AMZN"
+    name: "Amazon.com Inc."
+    category: "Consumer Discretionary"
+
+  - symbol: "TSLA"
+    name: "Tesla Inc."
+    category: "Automotive"
 
 # Data fetching settings
 data_settings:
@@ -49,9 +53,10 @@ data_settings:
 
 # S3 Storage settings
 s3_settings:
-  bucket_name: "stock-bot-v3-data"
+  bucket_name: "stock-analysis-bot"  # Use existing bucket from .env
   region: "us-east-1"
   version_prefix: "v1.0"
+  use_local_storage: true  # Fallback to local storage
   
 # FAISS Index settings
 faiss_settings:

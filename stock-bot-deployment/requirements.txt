@@ -30,3 +30,4 @@ ipykernel>=6.25.0
 # Utilities
 requests>=2.31.0
 python-multipart>=0.0.6
+yt-dlp>=2023.12.30
