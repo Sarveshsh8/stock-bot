@@ -218,7 +218,7 @@ Example format:
                     ],
                     "inferenceConfig": {
                         "maxTokens": max_tokens,
-                        "temperature": 0.7,
+                        "temperature": 0.1,
                         "topP": 0.9
                     }
                 }),
