@@ -5,6 +5,7 @@ Clean, modular design with improved prompting strategies
 
 import os
 import logging
+import json
 from typing import Dict, List, Any, Optional, Tuple
 import pandas as pd
 from pathlib import Path
@@ -63,8 +64,28 @@ class FinancialQASystem(BaseQASystem):
         
         try:
             model_name = self.config.get('faiss_settings', {}).get('model_name', 'all-MiniLM-L6-v2')
-            self.model = SentenceTransformer(model_name)
-            self.logger.info(f"Initialized embedding model: {model_name}")
+            
+            # Fix for PyTorch device issues on macOS MPS
+            import torch
+            import os
+            
+            # Force CPU usage to avoid MPS issues and segmentation faults
+            os.environ['CUDA_VISIBLE_DEVICES'] = ''
+            os.environ['PYTORCH_DISABLE_MPS'] = '1'
+            torch.set_num_threads(1)  # Limit threading to avoid conflicts
+            
+            # Explicitly disable MPS
+            if hasattr(torch.backends, 'mps'):
+                torch.backends.mps.is_available = lambda: False
+            
+            # Always use CPU for stability
+            self.model = SentenceTransformer(model_name, device='cpu')
+            
+            # Ensure model is on CPU
+            if hasattr(self.model, 'to'):
+                self.model = self.model.to('cpu')
+            
+            self.logger.info(f"Initialized embedding model: {model_name} on CPU")
         except Exception as e:
             self.logger.error(f"Failed to initialize embedding model: {e}")
             self.model = None
@@ -325,11 +346,18 @@ Answer:"""
         """Generate answer using AI model (Bedrock Nova Pro)"""
         try:
             import boto3
+            import os
+            from dotenv import load_dotenv
             
-            # Get Bedrock client
+            # Load environment variables
+            load_dotenv()
+            
+            # Get Bedrock client with explicit credentials
             bedrock_runtime = boto3.client(
                 service_name='bedrock-runtime',
-                region_name=self.config['bedrock_settings']['region']
+                region_name=self.config['bedrock_settings']['region'],
+                aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
             )
             
             # Prepare request
@@ -348,14 +376,15 @@ Answer:"""
             }
             
             # Call Bedrock
-            response = bedrock_runtime.converse(
+            response = bedrock_runtime.invoke_model(
                 modelId=self.config['bedrock_settings']['nova_pro_arn'],
-                messages=body["messages"],
-                inferenceConfig=body["inferenceConfig"]
+                body=json.dumps(body),
+                contentType="application/json"
             )
             
             # Extract answer
-            answer = response['output']['message']['content'][0]['text']
+            response_body = json.loads(response['body'].read())
+            answer = response_body['output']['message']['content'][0]['text']
             return answer
             
         except Exception as e:

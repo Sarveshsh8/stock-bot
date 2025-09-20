@@ -1,1 +1,1 @@
-# AI module - handles AI/ML operations
+# AI module

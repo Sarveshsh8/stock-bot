@@ -54,8 +54,27 @@ class FAISSManager:
     def _load_model(self):
         """Load sentence transformer model"""
         try:
-            self.model = SentenceTransformer(self.model_name)
-            self.logger.info(f"Loaded model: {self.model_name}")
+            # Fix for PyTorch device issues on macOS MPS
+            import torch
+            import os
+            
+            # Force CPU usage to avoid MPS issues and segmentation faults
+            os.environ['CUDA_VISIBLE_DEVICES'] = ''
+            os.environ['PYTORCH_DISABLE_MPS'] = '1'
+            torch.set_num_threads(1)  # Limit threading to avoid conflicts
+            
+            # Explicitly disable MPS
+            if hasattr(torch.backends, 'mps'):
+                torch.backends.mps.is_available = lambda: False
+            
+            # Always use CPU for stability
+            self.model = SentenceTransformer(self.model_name, device='cpu')
+            
+            # Ensure model is on CPU
+            if hasattr(self.model, 'to'):
+                self.model = self.model.to('cpu')
+            
+            self.logger.info(f"Loaded model: {self.model_name} on CPU")
         except Exception as e:
             self.logger.error(f"Error loading model: {str(e)}")
             raise
@@ -114,9 +133,9 @@ class FAISSManager:
         except Exception as e:
             self.logger.warning(f"Error during cleanup: {e}")
     
-    def create_index_from_yahoo_data(self, yahoo_data: Dict[str, Any]) -> bool:
+    def add_yahoo_data_to_index(self, yahoo_data: Dict[str, Any]) -> bool:
         """
-        Create FAISS index from Yahoo Finance data
+        Add Yahoo Finance data to existing FAISS index
         
         Args:
             yahoo_data: Dictionary containing Yahoo Finance data
@@ -125,46 +144,90 @@ class FAISSManager:
             True if successful, False otherwise
         """
         try:
-            self.logger.info("Creating FAISS index from Yahoo Finance data")
+            self.logger.info("Adding Yahoo Finance data to index")
             
             # Process each symbol's data
             for symbol, df in yahoo_data.items():
                 self._process_dataframe(symbol, df, 'yahoo_finance')
             
-            # Create FAISS index
-            self._build_index()
-            
-            self.logger.info(f"Created FAISS index with {len(self.documents)} documents")
+            self.logger.info(f"Added {len(yahoo_data)} Yahoo Finance symbols to index")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error creating index from Yahoo data: {str(e)}")
+            self.logger.error(f"Error adding Yahoo data to index: {str(e)}")
             return False
     
-    def create_index_from_files(self, file_data: List[Dict[str, Any]]) -> bool:
+    def add_files_to_index(self, file_data: List[Dict[str, Any]], data_type: str = 'uploaded_file') -> bool:
         """
-        Create FAISS index from uploaded files
+        Add file data to existing FAISS index
         
         Args:
             file_data: List of processed file data
+            data_type: Type of data (uploaded_file, youtube_video, etc.)
             
         Returns:
             True if successful, False otherwise
         """
         try:
-            self.logger.info("Creating FAISS index from uploaded files")
+            self.logger.info(f"Adding {len(file_data)} {data_type} files to index")
             
             for file_info in file_data:
+                # Add data type to metadata
+                file_info['data_type'] = data_type
                 self._process_file_data(file_info)
             
-            # Create FAISS index
-            self._build_index()
-            
-            self.logger.info(f"Created FAISS index with {len(self.documents)} documents")
+            self.logger.info(f"Added {len(file_data)} {data_type} files to index")
             return True
             
         except Exception as e:
-            self.logger.error(f"Error creating index from files: {str(e)}")
+            self.logger.error(f"Error adding {data_type} files to index: {str(e)}")
+            return False
+    
+    def create_unified_index(self, yahoo_data: Dict[str, Any] = None, 
+                           uploaded_files: List[Dict[str, Any]] = None,
+                           youtube_analyses: List[Dict[str, Any]] = None) -> bool:
+        """
+        Create a single unified FAISS index from all data sources
+        
+        Args:
+            yahoo_data: Yahoo Finance data
+            uploaded_files: Processed uploaded files
+            youtube_analyses: YouTube video analyses
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.logger.info("Creating unified FAISS index from all data sources")
+            
+            # Clear existing data
+            self.documents = []
+            self.document_metadata = []
+            self.embeddings = []
+            
+            # Add Yahoo Finance data
+            if yahoo_data:
+                self.add_yahoo_data_to_index(yahoo_data)
+            
+            # Add uploaded files
+            if uploaded_files:
+                self.add_files_to_index(uploaded_files, 'uploaded_file')
+            
+            # Add YouTube analyses
+            if youtube_analyses:
+                self.add_files_to_index(youtube_analyses, 'youtube_video')
+            
+            # Build the unified index
+            if self.documents:
+                self._build_index()
+                self.logger.info(f"Created unified FAISS index with {len(self.documents)} documents")
+                return True
+            else:
+                self.logger.warning("No documents to create index from")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error creating unified index: {str(e)}")
             return False
     
     def _process_dataframe(self, symbol: str, df, data_type: str):
@@ -191,7 +254,8 @@ class FAISSManager:
                 self.documents.append(chunk)
                 self.document_metadata.append({
                     'symbol': symbol,
-                    'data_type': data_type,
+                    'data_type': 'stock_data',
+                    'content_type': data_type,
                     'chunk_id': i,
                     'source': 'yahoo_finance'
                 })
@@ -216,6 +280,7 @@ class FAISSManager:
                 self.document_metadata.append({
                     'file_name': metadata.get('file_name', 'unknown'),
                     'file_type': metadata.get('file_type', 'unknown'),
+                    'data_type': file_info.get('data_type', 'uploaded_file'),
                     'chunk_id': i,
                     'source': 'uploaded_file',
                     **metadata
@@ -260,9 +325,27 @@ class FAISSManager:
             return
         
         try:
-            # Generate embeddings
+            # Generate embeddings with better error handling
             self.logger.info("Generating embeddings...")
-            embeddings = self.model.encode(self.documents)
+            
+            # Process documents in smaller batches to avoid memory issues
+            batch_size = 32
+            all_embeddings = []
+            
+            for i in range(0, len(self.documents), batch_size):
+                batch_docs = self.documents[i:i + batch_size]
+                self.logger.info(f"Processing batch {i//batch_size + 1}/{(len(self.documents) + batch_size - 1)//batch_size}")
+                
+                try:
+                    batch_embeddings = self.model.encode(batch_docs, show_progress_bar=False)
+                    all_embeddings.append(batch_embeddings)
+                except Exception as e:
+                    self.logger.error(f"Error processing batch {i//batch_size + 1}: {e}")
+                    raise
+            
+            # Combine all embeddings
+            import numpy as np
+            embeddings = np.vstack(all_embeddings)
             
             # Create FAISS index
             self.index = faiss.IndexFlatIP(self.index_dimension)

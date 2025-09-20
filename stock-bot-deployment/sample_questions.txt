@@ -1,0 +1,30 @@
+SAMPLE QUESTIONS FOR STOCK BOT
+==================================================
+
+Based on your knowledge base, here are sample questions you can ask:
+
+ 1. What was the opening price of SPY on 2025-09-15?
+ 2. What was the highest price of QQQ on 2025-09-18?
+ 3. What was the closing price of IWM on 2025-09-17?
+ 4. What was the volume of SPY on 2025-09-19?
+ 5. What were the dividends for IWM on 2025-09-16?
+ 6. What was the low price of SPY on 2025-09-17?
+ 7. What was the capital gains for QQQ on 2025-09-19?
+ 8. What was the stock split value for SPY on 2025-09-18?
+ 9. What was the opening price of QQQ on 2025-09-16?
+10. What was the volume of IWM on 2025-09-15?
+11. What were the dividends for SPY on 2025-09-19?
+12. What was the high price of IWM on 2025-09-18?
+13. What was the closing price of SPY on 2025-09-16?
+14. What was the low price of QQQ on 2025-09-17?
+15. What was the volume of QQQ on 2025-09-19?
+16. What was the opening price of IWM on 2025-09-19?
+17. What was the high price of SPY on 2025-09-15?
+18. What was the closing price of QQQ on 2025-09-15?
+19. What was the low price of IWM on 2025-09-16?
+20. What were the dividends for QQQ on 2025-09-18?
+
+Total: 20 sample questions
+
+Generated on: 2025-09-20 14:32:49
+Generated using: AI-powered question generation

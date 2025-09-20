@@ -15,6 +15,7 @@ from pathlib import Path
 from ai.faiss.faiss_manager import FAISSManager
 from ai.bedrock.video.video_analyzer import VideoAnalyzer
 from ai.bedrock.image.image_analyzer import ImageAnalyzer
+from ai.sample_questions_generator import SampleQuestionsGenerator
 from qa.qa_system import FinancialQASystem
 from data.processors.file_processor import FileProcessor
 
@@ -70,6 +71,10 @@ class UnifiedFinancialPipeline:
             # Initialize QA system
             self.qa_system = FinancialQASystem(self.config)
             self.logger.info(" Enhanced QA system initialized")
+            
+            # Initialize sample questions generator
+            self.sample_questions_generator = SampleQuestionsGenerator(self.config)
+            self.logger.info(" Sample questions generator initialized")
             
             # Initialize file processor
             self.file_processor = FileProcessor(self.config)
@@ -323,30 +328,57 @@ class UnifiedFinancialPipeline:
             True if successful, False otherwise
         """
         try:
-            self.logger.info(" Creating unified FAISS index")
+            self.logger.info(" Creating unified FAISS index from all data sources")
             
-            # Add market data to FAISS
-            if market_data:
-                self.faiss_manager.create_index_from_yahoo_data(market_data)
-                self.logger.info(f" Added {len(market_data)} market data sources to index")
+            # Create single unified index with all data sources
+            success = self.faiss_manager.create_unified_index(
+                yahoo_data=market_data,
+                uploaded_files=processed_files,
+                youtube_analyses=youtube_analyses
+            )
             
-            # Add processed files to FAISS
-            if processed_files:
-                self.faiss_manager.create_index_from_files(processed_files)
-                self.logger.info(f" Added {len(processed_files)} processed files to index")
-            
-            # Add YouTube analyses to FAISS
-            if youtube_analyses:
-                self.faiss_manager.create_index_from_files(youtube_analyses)
-                self.logger.info(f" Added {len(youtube_analyses)} YouTube analyses to index")
-            
-            # Update QA system with FAISS data
-            self.qa_system.documents = self.faiss_manager.documents
-            self.qa_system.metadata = self.faiss_manager.document_metadata
-            self.qa_system.index = self.faiss_manager.index
-            
-            self.logger.info(" Unified index created successfully")
-            return True
+            if success:
+                # Update QA system with unified FAISS data
+                self.qa_system.documents = self.faiss_manager.documents
+                self.qa_system.metadata = self.faiss_manager.document_metadata
+                self.qa_system.index = self.faiss_manager.index
+                
+                # Log summary of what was added
+                total_docs = len(self.faiss_manager.documents)
+                yahoo_count = len(market_data) if market_data else 0
+                files_count = len(processed_files) if processed_files else 0
+                youtube_count = len(youtube_analyses) if youtube_analyses else 0
+                
+                self.logger.info(f" Unified index created successfully with {total_docs} total documents:")
+                self.logger.info(f"  - Yahoo Finance data: {yahoo_count} symbols")
+                self.logger.info(f"  - Uploaded files: {files_count} files")
+                self.logger.info(f"  - YouTube videos: {youtube_count} videos")
+                
+                # Generate and save sample questions using LLM
+                self.logger.info(" Generating sample questions from knowledge base using LLM...")
+                try:
+                    sample_questions = self.sample_questions_generator.generate_questions_from_content(
+                        market_data=market_data,
+                        processed_files=processed_files,
+                        youtube_analyses=youtube_analyses
+                    )
+                    
+                    if sample_questions:
+                        filepath = self.sample_questions_generator.save_questions_to_file(sample_questions)
+                        if filepath:
+                            self.logger.info(f" Sample questions saved to: {filepath}")
+                        else:
+                            self.logger.warning(" Failed to save sample questions")
+                    else:
+                        self.logger.warning(" No sample questions generated")
+                        
+                except Exception as e:
+                    self.logger.error(f" Error generating sample questions: {e}")
+                
+                return True
+            else:
+                self.logger.error(" Failed to create unified index")
+                return False
             
         except Exception as e:
             self.logger.error(f" Index creation failed: {e}")
