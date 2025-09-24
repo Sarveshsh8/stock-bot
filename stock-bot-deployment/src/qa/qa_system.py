@@ -15,10 +15,94 @@ from abc import ABC, abstractmethod
 try:
     import faiss
     from sentence_transformers import SentenceTransformer
+    import boto3
+    from botocore.exceptions import ClientError
+    import numpy as np
     FAISS_AVAILABLE = True
 except ImportError:
     FAISS_AVAILABLE = False
     print("Warning: FAISS not available. Install with: pip install faiss-cpu sentence-transformers")
+
+class AmazonTitanEmbedding:
+    """Amazon Titan embedding model wrapper"""
+    
+    def __init__(self, model_name: str, region: str = "us-east-1"):
+        """
+        Initialize Amazon Titan embedding model
+        
+        Args:
+            model_name: The model name (e.g., "amazon.titan-embed-text-v1")
+            region: AWS region
+        """
+        self.model_name = model_name
+        self.region = region
+        
+        # Load environment variables
+        from dotenv import load_dotenv
+        load_dotenv()
+        
+        # Initialize Bedrock client
+        self.bedrock_runtime = boto3.client(
+            'bedrock-runtime',
+            region_name=region,
+            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY')
+        )
+        
+        self.logger = logging.getLogger(__name__)
+    
+    def encode(self, texts: List[str], show_progress_bar: bool = False) -> np.ndarray:
+        """
+        Generate embeddings for a list of texts
+        
+        Args:
+            texts: List of texts to embed
+            show_progress_bar: Whether to show progress (ignored for API calls)
+            
+        Returns:
+            numpy array of embeddings
+        """
+        embeddings = []
+        
+        for text in texts:
+            try:
+                # Prepare the request body for Titan embedding
+                if "v2" in self.model_name:
+                    # Titan v2 format
+                    body = {
+                        "inputText": text,
+                        "dimensions": 1024  # Titan v2 default dimension
+                    }
+                else:
+                    # Titan v1 format
+                    body = {
+                        "inputText": text,
+                        "dimensions": 1536  # Titan v1 embedding dimension
+                    }
+                
+                # Invoke the model
+                response = self.bedrock_runtime.invoke_model(
+                    modelId=self.model_name,
+                    body=json.dumps(body),
+                    contentType='application/json'
+                )
+                
+                # Parse response
+                response_body = json.loads(response['body'].read())
+                embedding = response_body['embedding']
+                embeddings.append(embedding)
+                
+            except ClientError as e:
+                self.logger.error(f"Error generating embedding: {e}")
+                # Return zero vector as fallback
+                fallback_dim = 1024 if "v2" in self.model_name else 1536
+                embeddings.append([0.0] * fallback_dim)
+            except Exception as e:
+                self.logger.error(f"Unexpected error generating embedding: {e}")
+                fallback_dim = 1024 if "v2" in self.model_name else 1536
+                embeddings.append([0.0] * fallback_dim)
+        
+        return np.array(embeddings, dtype=np.float32)
 
 class BaseQASystem(ABC):
     """Abstract base class for Q&A systems"""
@@ -65,27 +149,33 @@ class FinancialQASystem(BaseQASystem):
         try:
             model_name = self.config.get('faiss_settings', {}).get('model_name', 'all-MiniLM-L6-v2')
             
-            # Fix for PyTorch device issues on macOS MPS
-            import torch
-            import os
-            
-            # Force CPU usage to avoid MPS issues and segmentation faults
-            os.environ['CUDA_VISIBLE_DEVICES'] = ''
-            os.environ['PYTORCH_DISABLE_MPS'] = '1'
-            torch.set_num_threads(1)  # Limit threading to avoid conflicts
-            
-            # Explicitly disable MPS
-            if hasattr(torch.backends, 'mps'):
-                torch.backends.mps.is_available = lambda: False
-            
-            # Always use CPU for stability
-            self.model = SentenceTransformer(model_name, device='cpu')
-            
-            # Ensure model is on CPU
-            if hasattr(self.model, 'to'):
-                self.model = self.model.to('cpu')
-            
-            self.logger.info(f"Initialized embedding model: {model_name} on CPU")
+            # Check if using Amazon Titan or SentenceTransformers
+            if model_name.startswith("amazon.titan"):
+                # Use Amazon Titan embedding
+                region = self.config.get('bedrock_settings', {}).get('region', 'us-east-1')
+                self.model = AmazonTitanEmbedding(model_name, region)
+                self.logger.info(f"Initialized Amazon Titan model: {model_name}")
+            else:
+                # Fallback to SentenceTransformers for other models
+                import torch
+                
+                # Fix for PyTorch device issues on macOS MPS
+                os.environ['CUDA_VISIBLE_DEVICES'] = ''
+                os.environ['PYTORCH_DISABLE_MPS'] = '1'
+                torch.set_num_threads(1)  # Limit threading to avoid conflicts
+                
+                # Explicitly disable MPS
+                if hasattr(torch.backends, 'mps'):
+                    torch.backends.mps.is_available = lambda: False
+                
+                # Always use CPU for stability
+                self.model = SentenceTransformer(model_name, device='cpu')
+                
+                # Ensure model is on CPU
+                if hasattr(self.model, 'to'):
+                    self.model = self.model.to('cpu')
+                
+                self.logger.info(f"Initialized SentenceTransformer model: {model_name} on CPU")
         except Exception as e:
             self.logger.error(f"Failed to initialize embedding model: {e}")
             self.model = None

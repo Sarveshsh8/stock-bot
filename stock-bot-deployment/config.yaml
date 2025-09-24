@@ -60,8 +60,8 @@ s3_settings:
   
 # FAISS Index settings
 faiss_settings:
-  model_name: "all-MiniLM-L6-v2"
-  index_dimension: 384
+  model_name: "amazon.titan-embed-text-v2:0"
+  index_dimension: 1024
   chunk_size: 1000
   overlap_size: 200
   
