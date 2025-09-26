@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AMRK,09:30,8.38,8.38,8.38,8.38,8.38,550,1
+20200102,AMRK,10:44,8.3450,8.3450,8.34,8.34,8.34333,300,3
+20200102,AMRK,12:11,8.34,8.34,8.34,8.34,8.34,675,6

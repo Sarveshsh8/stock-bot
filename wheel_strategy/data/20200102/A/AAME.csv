@@ -1,0 +1,5 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AAME,09:30,1.99,1.99,1.99,1.99,1.99,236,1
+20200102,AAME,09:32,1.99,1.99,1.99,1.99,1.99,500,1
+20200102,AAME,13:21,2.09,2.09,2.09,2.09,2.09,100,1
+20200102,AAME,15:31,1.99,1.99,1.99,1.99,1.99,389,1

@@ -1,0 +1,2 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,ATEST.C,07:00,25.04,25.04,25.04,25.04,25.04,400,1

@@ -1,0 +1,5 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,ARTW,15:32,1.79,1.80,1.79,1.80,1.79857,1400,4
+20200102,ARTW,15:33,1.80,1.80,1.7950,1.7950,1.79833,300,3
+20200102,ARTW,15:39,1.81,1.81,1.81,1.81,1.81,200,2
+20200102,ARTW,16:39,1.81,1.81,1.81,1.81,1.81,194,1

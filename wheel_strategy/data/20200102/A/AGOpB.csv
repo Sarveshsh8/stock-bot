@@ -1,0 +1,3 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AGOpB,09:30,27.03,27.03,27.03,27.03,27.03,451,1
+20200102,AGOpB,14:44,27.10,27.10,27.10,27.10,27.10,200,1

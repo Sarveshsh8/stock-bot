@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,ADRD,09:30,22.58,22.58,22.58,22.58,22.58,567,1
+20200102,ADRD,09:35,22.58,22.58,22.58,22.58,22.58,200,2
+20200102,ADRD,10:50,22.60,22.60,22.60,22.60,22.60,399,2

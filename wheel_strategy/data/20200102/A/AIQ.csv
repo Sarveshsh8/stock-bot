@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AIQ,09:30,17.96,17.96,17.96,17.96,17.96,1367,1
+20200102,AIQ,10:54,18.13,18.13,18.13,18.13,18.13,100,1
+20200102,AIQ,15:53,18.30,18.31,18.30,18.31,18.3025,400,4

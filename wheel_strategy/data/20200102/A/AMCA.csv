@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AMCA,09:30,30.57,30.57,30.57,30.57,30.57,100,1
+20200102,AMCA,09:38,30.54,30.54,30.54,30.54,30.54,100,1
+20200102,AMCA,09:42,30.55,30.55,30.55,30.55,30.55,100,1

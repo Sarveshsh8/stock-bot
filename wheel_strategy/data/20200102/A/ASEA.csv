@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,ASEA,09:30,16.28,16.28,16.28,16.28,16.28,294,1
+20200102,ASEA,12:04,16.2150,16.2150,16.2150,16.2150,16.215,100,1
+20200102,ASEA,12:33,16.35,16.35,16.35,16.35,16.35,300,3

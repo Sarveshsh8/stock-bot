@@ -1,0 +1,6 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AP,09:30,3.01,3.01,3.01,3.01,3.01,136,1
+20200102,AP,12:04,3.07,3.07,3.07,3.07,3.07,100,1
+20200102,AP,12:25,3.07,3.07,3.07,3.07,3.07,100,1
+20200102,AP,15:30,3.07,3.07,3.07,3.07,3.07,100,1
+20200102,AP,15:32,3.06,3.06,3.06,3.06,3.06,100,1

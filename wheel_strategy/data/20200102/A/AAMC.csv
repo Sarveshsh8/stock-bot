@@ -1,0 +1,3 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AAMC,12:23,12.42,12.42,12.42,12.42,12.42,100,1
+20200102,AAMC,13:58,13.17,13.17,13.17,13.17,13.17,100,1

@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AZRE,10:28,12.65,12.65,12.65,12.65,12.65,100,1
+20200102,AZRE,11:57,12.64,12.64,12.64,12.64,12.64,100,1
+20200102,AZRE,12:24,12.65,12.65,12.65,12.65,12.65,100,1

@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,ACWF,11:05,31.38,31.38,31.38,31.38,31.38,226,2
+20200102,ACWF,11:35,31.33,31.33,31.33,31.33,31.33,100,1
+20200102,ACWF,15:12,31.36,31.36,31.36,31.36,31.36,100,1

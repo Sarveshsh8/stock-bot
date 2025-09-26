@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,ACT,09:30,25.13,25.13,25.13,25.13,25.13,619,1
+20200102,ACT,09:48,25.15,25.15,25.15,25.15,25.15,200,2
+20200102,ACT,15:56,25.14,25.14,25.14,25.14,25.14,100,1

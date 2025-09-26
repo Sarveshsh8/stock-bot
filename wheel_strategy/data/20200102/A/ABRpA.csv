@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,ABRpA,10:25,26.08,26.08,26.08,26.08,26.08,100,1
+20200102,ABRpA,10:26,26.10,26.10,26.10,26.10,26.10,123,1
+20200102,ABRpA,14:49,26.11,26.11,26.11,26.11,26.11,275,1

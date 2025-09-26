@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AKO.A,09:42,15.25,15.25,15.25,15.25,15.25,200,1
+20200102,AKO.A,09:51,14.91,14.91,14.91,14.91,14.91,125,1
+20200102,AKO.A,13:07,14.99,14.99,14.99,14.99,14.99,950,5

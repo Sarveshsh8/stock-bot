@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AACG,12:34,1.36,1.36,1.36,1.36,1.36,100,1
+20200102,AACG,14:03,1.38,1.38,1.38,1.38,1.38,100,1
+20200102,AACG,15:23,1.37,1.37,1.35,1.35,1.36169,599,4

@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,ATLO,10:04,28.05,28.05,28.05,28.05,28.05,100,1
+20200102,ATLO,15:49,27.63,27.63,27.63,27.63,27.63,100,1
+20200102,ATLO,16:00,27.79,27.79,27.79,27.79,27.79,457,1

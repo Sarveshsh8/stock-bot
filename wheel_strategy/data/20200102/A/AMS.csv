@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AMS,10:32,2.45,2.50,2.44,2.50,2.49338,4950,15
+20200102,AMS,10:33,2.49,2.50,2.45,2.50,2.48,700,5
+20200102,AMS,10:34,2.50,2.50,2.45,2.50,2.49217,1404,5

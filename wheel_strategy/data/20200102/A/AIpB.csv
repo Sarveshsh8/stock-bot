@@ -1,0 +1,3 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AIpB,14:58,21.15,21.15,21.04,21.04,21.095,400,3
+20200102,AIpB,15:59,21.10,21.10,21.10,21.10,21.10,100,1

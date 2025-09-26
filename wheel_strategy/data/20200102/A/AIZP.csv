@@ -1,0 +1,4 @@
+Date,Ticker,TimeBarStart,FirstTradePrice,HighTradePrice,LowTradePrice,LastTradePrice,VolumeWeightPrice,Volume,TotalTrades
+20200102,AIZP,09:42,129.28,129.28,129.28,129.28,129.28,222,1
+20200102,AIZP,14:44,129.27,129.27,129.27,129.27,129.27,100,1
+20200102,AIZP,15:57,129.75,129.75,129.75,129.75,129.75,125,1
