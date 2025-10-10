@@ -38,14 +38,33 @@ def setup_aws_credentials():
     
     print(f"AWS credentials configured for region: {AWS_CONFIG['region']}")
 
-def get_bedrock_config():
+def get_bedrock_config(region=None, model_id=None):
     """
     Get Bedrock configuration dictionary.
+    
+    Parameters:
+    - region: AWS region (optional, uses default if not provided)
+    - model_id: Bedrock model ID (optional, uses default if not provided)
     
     Returns:
     - Dictionary with Bedrock settings
     """
-    return BEDROCK_CONFIG
+    config = BEDROCK_CONFIG.copy()
+    if region:
+        config['region'] = region
+    if model_id:
+        config['model_id'] = model_id
+    
+    # Return in expected format for NovaTextAnalyzer
+    return {
+        'bedrock_settings': {
+            'region': config['region'],
+            'nova_pro_arn': config['model_id'],
+            'max_tokens': config['max_tokens'],
+            'temperature': config['temperature'],
+            'top_p': config['top_p']
+        }
+    }
 
 def verify_aws_credentials():
     """
