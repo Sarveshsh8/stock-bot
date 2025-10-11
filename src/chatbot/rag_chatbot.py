@@ -1,5 +1,6 @@
 import os
-from typing import TypedDict, Annotated, Sequence
+from typing import TypedDict, Annotated, Sequence, Optional, List, Dict
+import re
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 import operator
@@ -18,6 +19,8 @@ class AgentState(TypedDict):
     retrieved_context: str
     search_results: str
     final_answer: str
+    ticker: Optional[str]
+    history_context: str
 
 
 class StockRAGChatbot:
@@ -58,6 +61,24 @@ class StockRAGChatbot:
         self.nova = NovaTextAnalyzer(region=region, model_id=model_id, max_tokens=max_tokens)
         self.graph = self._create_graph()
         
+    # Common company-name to ticker mapping for better intent detection
+    COMPANY_TO_TICKER = {
+        "TESLA": "TSLA",
+        "APPLE": "AAPL",
+        "ALPHABET": "GOOGL",
+        "GOOGLE": "GOOGL",
+        "MICROSOFT": "MSFT",
+        "AMAZON": "AMZN",
+        "META": "META",
+        "FACEBOOK": "META",
+        "NVIDIA": "NVDA",
+        "NETFLIX": "NFLX",
+        "ADOBE": "ADBE",
+        "INTEL": "INTC",
+        "AMD": "AMD",
+        "IBM": "IBM",
+    }
+
     def _create_graph(self):
         """
         Create the LangGraph workflow.
@@ -96,10 +117,21 @@ class StockRAGChatbot:
         to find the relevant pages.
         """
         query = state['user_query']
+        history_context = state.get('history_context', '')
         print(f"Retrieving data for query: {query}")
+
+        # Detect ticker early (use company name or history if needed)
+        inferred_ticker = self._detect_ticker(query, history_context) or state.get('ticker')
+        if inferred_ticker:
+            # Remember ticker for later nodes
+            state['ticker'] = inferred_ticker
+            # Bias retrieval toward the ticker string as well
+            augmented_query = f"{query} {inferred_ticker}"
+        else:
+            augmented_query = query
         
         # Search vector store for relevant documents
-        results = self.vector_store.search(query, k=3)
+        results = self.vector_store.search(augmented_query, k=3)
         
         # Format retrieved context
         context_parts = []
@@ -128,8 +160,8 @@ class StockRAGChatbot:
         print(f"Searching Google for: {query}")
         
         # Try to extract ticker from query (simple approach)
-        words = query.upper().split()
-        potential_tickers = [word for word in words if word.isalpha() and len(word) <= 5]
+        words = query.upper().replace("$", " ").split()
+        potential_tickers = [word for word in words if word.isalpha() and 1 <= len(word) <= 5]
         
         search_summary = ""
         if potential_tickers:
@@ -137,8 +169,19 @@ class StockRAGChatbot:
             ticker = potential_tickers[0]
             search_results = self.google_search.search_stock_info(ticker, query)
             search_summary = self.google_search.create_search_summary(search_results)
+            state['ticker'] = ticker
         else:
-            search_summary = "No specific stock ticker identified for Google search."
+            # Try infer ticker from recent conversation
+            history_text = state.get('history_context') or ''
+            inferred = self._extract_ticker_from_history_text(history_text)
+            if inferred:
+                ticker = inferred
+                search_results = self.google_search.search_stock_info(ticker, query)
+                search_summary = self.google_search.create_search_summary(search_results)
+                state['ticker'] = ticker
+            else:
+                search_summary = "No specific stock ticker identified for Google search."
+                state['ticker'] = None
         
         state['search_results'] = search_summary
         return state
@@ -158,14 +201,27 @@ class StockRAGChatbot:
         query = state['user_query']
         context = state['retrieved_context']
         search = state['search_results']
+        history_context = state.get('history_context', '')
+        ticker = state.get('ticker')
         
         print("Generating final answer with Nova Pro...")
         
         # Use Nova Pro to generate response
         try:
+            # If a specific ticker was detected, steer Nova to provide a simple, friendly explainer
+            guided_query = query
+            if ticker:
+                guided_query = (
+                    f"User asked about {ticker}. In a short, simple paragraph, explain what the company does, "
+                    f"and add any relevant context from the data and search results. Keep it non-technical.\n\n"
+                    f"Original user query: {query}"
+                )
+
             response = self.nova.analyze_stock_context(
-                query=query,
-                retrieved_context=context,
+                query=guided_query,
+                retrieved_context=(
+                    ("Recent Conversation (last messages):\n" + history_context + "\n\n") if history_context else ""
+                ) + ("Retrieved Stock Data:\n" + context if context else "Retrieved Stock Data: None"),
                 search_results=search,
                 temperature=0.7
             )
@@ -187,7 +243,7 @@ class StockRAGChatbot:
         
         return state
     
-    def chat(self, user_query: str) -> str:
+    def chat(self, user_query: str, conversation_messages: Optional[List[Dict[str, str]]] = None) -> str:
         """
         Main chat interface.
         
@@ -201,19 +257,103 @@ class StockRAGChatbot:
         It runs the entire workflow (retrieve -> search -> generate with Nova) and
         returns the final answer.
         """
+        # Lightweight intent handling: greetings/casual chat -> friendly prompt, skip heavy RAG
+        casual_phrases = [
+            "hi", "hello", "hey", "yo", "sup", "good morning", "good evening", "good afternoon",
+            "how are you", "what's up", "howdy"
+        ]
+        uq_lower = user_query.strip().lower()
+        if any(phrase in uq_lower for phrase in casual_phrases) and not any(k in uq_lower for k in ["stock", "price", "company", "ticker"]):
+            return "Hi! How can I assist you with stocks today?"
+
         # Initialize state
         initial_state = {
             'messages': [],
             'user_query': user_query,
             'retrieved_context': '',
             'search_results': '',
-            'final_answer': ''
+            'final_answer': '',
+            'ticker': None,
+            'history_context': self._format_history(conversation_messages) if conversation_messages else ''
         }
         
         # Run the graph
         final_state = self.graph.invoke(initial_state)
         
         return final_state['final_answer']
+
+    def _format_history(self, messages: Optional[List[Dict[str, str]]], max_chars: int = 1500) -> str:
+        """
+        Format recent conversation messages into a compact string for grounding follow-ups.
+        Only include the last portion up to max_chars to keep prompts small.
+        """
+        if not messages:
+            return ''
+        # Use last 20 messages max
+        trimmed = messages[-20:]
+        lines: List[str] = []
+        for m in trimmed:
+            role = m.get('role', 'user')
+            content = (m.get('content') or '').strip()
+            if not content:
+                continue
+            lines.append(f"{role.capitalize()}: {content}")
+        blob = "\n".join(lines)
+        if len(blob) > max_chars:
+            return blob[-max_chars:]
+        return blob
+
+    def _extract_ticker_from_history_text(self, text: str) -> Optional[str]:
+        """
+        Heuristic: find last occurrence of $TICKER or uppercase 1-5 letters in recent conversation.
+        Filters common words to reduce false positives.
+        """
+        if not text:
+            return None
+        # Prefer $TICKER pattern
+        dollar_matches = re.findall(r"\$([A-Z]{1,5})\b", text)
+        if dollar_matches:
+            return dollar_matches[-1]
+        # Fallback: standalone uppercase tokens 1-5 chars
+        tokens = re.findall(r"\b([A-Z]{1,5})\b", text)
+        # Exclude common words
+        stop = {"THE","AND","FOR","WITH","FROM","THIS","THAT","WHAT","WAS","WERE","WHEN","WILL","HAVE","HAD","HAS","YOUR","USER","ASSISTANT","DATA","VOLUME"}
+        candidates = [t for t in tokens if t not in stop]
+        return candidates[-1] if candidates else None
+
+    def _detect_ticker(self, query: str, history_text: str = "") -> Optional[str]:
+        """
+        Detect ticker from current query using $TICKER, explicit ticker, or company name.
+        If not found, fallback to history.
+        """
+        if not query:
+            return self._extract_ticker_from_history_text(history_text)
+
+        # $TICKER pattern
+        m = re.findall(r"\$([A-Za-z]{1,5})\b", query)
+        if m:
+            return m[-1].upper()
+
+        # Explicit uppercase tokens (filter out generic words to avoid 'WHAT' false positive)
+        tokens = re.findall(r"\b([A-Z]{1,5})\b", query)
+        if tokens:
+            stop = {
+                "WHAT","WHATS","WHATS?","WHATSUP","OPEN","OPENING","CLOSE","CLOSED","PRICE","PRICES",
+                "VOLUME","TOTAL","TRADING","TRADE","TRADES","STOCK","DATA","LATEST","REALTIME","REAL-TIME",
+                "THE","AND","FOR","WITH","FROM","THIS","THAT","WHAT'S","IS","WAS","ARE","OF","ON","AT"
+            }
+            filtered = [t for t in tokens if t not in stop]
+            if filtered:
+                return filtered[-1]
+
+        # Company-name mapping
+        up = query.upper()
+        for name, tkr in self.COMPANY_TO_TICKER.items():
+            if name in up:
+                return tkr
+
+        # Fallback to history
+        return self._extract_ticker_from_history_text(history_text)
     
     def get_conversation_history(self, state: AgentState) -> list:
         """

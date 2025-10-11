@@ -1,0 +1,5 @@
+#!/bin/bash
+cd /home/ec2-user
+cat > /home/ec2-user/install.log 2>&1 << 'LOG_EOF'
+Installing Stock Bot...
+LOG_EOF
