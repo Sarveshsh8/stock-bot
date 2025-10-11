@@ -42,6 +42,8 @@ if 'auth' not in st.session_state:
     st.session_state.auth = DynamoDBAuthService()
 if 'history' not in st.session_state:
     st.session_state.history = DynamoDBChatHistory()
+if 'session_id' not in st.session_state:
+    st.session_state.session_id = None
 
 
 @st.cache_resource
@@ -165,6 +167,7 @@ def main():
             if st.button("Logout"):
                 st.session_state.user_email = None
                 st.session_state.messages = []
+                st.session_state.session_id = None
                 st.rerun()
 
         if st.button("Clear Chat"):
@@ -196,7 +199,10 @@ def main():
                     try:
                         if st.session_state.auth.login(email, password):
                             st.session_state.user_email = email
-                            msgs = st.session_state.history.get_last_messages(email)
+                            # Create a new session id on each successful login
+                            import uuid
+                            st.session_state.session_id = uuid.uuid4().hex
+                            msgs = st.session_state.history.get_last_messages(email, session_id=st.session_state.session_id)
                             st.session_state.messages = [{"role": m["role"], "content": m["content"]} for m in msgs]
                             st.success("Logged in. Loading chat...")
                             st.rerun()
@@ -250,8 +256,8 @@ def main():
                     st.session_state.messages.append({"role": "assistant", "content": response})
                     # Persist to DynamoDB
                     try:
-                        st.session_state.history.add_message(st.session_state.user_email, "user", prompt)
-                        st.session_state.history.add_message(st.session_state.user_email, "assistant", response)
+                        st.session_state.history.add_message(st.session_state.user_email, "user", prompt, session_id=st.session_state.session_id)
+                        st.session_state.history.add_message(st.session_state.user_email, "assistant", response, session_id=st.session_state.session_id)
                     except Exception:
                         pass
                 except Exception as e:

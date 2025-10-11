@@ -1,6 +1,6 @@
 import os
 import time
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import boto3
 
@@ -23,7 +23,7 @@ class DynamoDBChatHistory:
         self.dynamo = boto3.resource("dynamodb", region_name=self.region)
         self.table = self.dynamo.Table(self.table_name)
 
-    def add_message(self, email: str, role: str, content: str) -> None:
+    def add_message(self, email: str, role: str, content: str, session_id: Optional[str] = None) -> None:
         ts = int(time.time())
         self.table.put_item(
             Item={
@@ -31,10 +31,11 @@ class DynamoDBChatHistory:
                 "ts": ts,
                 "role": role,
                 "content": content,
+                "session_id": session_id or "",
             }
         )
 
-    def get_last_messages(self, email: str) -> List[Dict]:
+    def get_last_messages(self, email: str, session_id: Optional[str] = None) -> List[Dict]:
         resp = self.table.query(
             KeyConditionExpression="#e = :e",
             ExpressionAttributeNames={"#e": "email"},
@@ -43,6 +44,8 @@ class DynamoDBChatHistory:
             Limit=self.max_messages,
         )
         items = resp.get("Items", [])
+        if session_id is not None:
+            items = [it for it in items if it.get("session_id", "") == session_id]
         # Return ascending by time
         return sorted(items, key=lambda x: x["ts"]) if items else []
 

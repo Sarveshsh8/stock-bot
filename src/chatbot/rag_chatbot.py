@@ -159,29 +159,17 @@ class StockRAGChatbot:
         query = state['user_query']
         print(f"Searching Google for: {query}")
         
-        # Try to extract ticker from query (simple approach)
-        words = query.upper().replace("$", " ").split()
-        potential_tickers = [word for word in words if word.isalpha() and 1 <= len(word) <= 5]
+        history_text = state.get('history_context') or ''
+        ticker = self._detect_ticker(query, history_text) or state.get('ticker')
         
         search_summary = ""
-        if potential_tickers:
-            # Search for the first potential ticker
-            ticker = potential_tickers[0]
+        if ticker:
             search_results = self.google_search.search_stock_info(ticker, query)
             search_summary = self.google_search.create_search_summary(search_results)
             state['ticker'] = ticker
         else:
-            # Try infer ticker from recent conversation
-            history_text = state.get('history_context') or ''
-            inferred = self._extract_ticker_from_history_text(history_text)
-            if inferred:
-                ticker = inferred
-                search_results = self.google_search.search_stock_info(ticker, query)
-                search_summary = self.google_search.create_search_summary(search_results)
-                state['ticker'] = ticker
-            else:
-                search_summary = "No specific stock ticker identified for Google search."
-                state['ticker'] = None
+            search_summary = "No specific stock ticker identified for Google search."
+            state['ticker'] = None
         
         state['search_results'] = search_summary
         return state
@@ -208,12 +196,46 @@ class StockRAGChatbot:
         
         # Use Nova Pro to generate response
         try:
-            # If a specific ticker was detected, steer Nova to provide a simple, friendly explainer
-            guided_query = query
-            if ticker:
+            # Decide between structured fact response (first queries) and analytical follow-up
+            explicit_ticker_in_query = bool(self._detect_ticker(query, ""))
+            # Bullet/structured mode only when explicitly requested
+            wants_structured = any(k in query.lower() for k in ["structured", "show bullets", "bullet", "table"])
+            # Default to analytical unless explicitly asking for structured
+            follow_up = True if not wants_structured else False
+
+            if follow_up:
+                # Analytical follow-up: multi-paragraph narrative, richer company overview
+                analysis_instructions = (
+                    f"Provide a clear analysis of {ticker or 'the stock'} in plain text (no markdown, no italics, no bullets). "
+                    "Organize the response into four labeled sections, each as 1 short paragraph separated by a blank line: "
+                    "Summary: a direct answer to the question. "
+                    "Price & Levels: cite open/high/low/close with dates and infer likely support/resistance. "
+                    "Volume & Volatility: discuss intraday range vs average and notable volume context. "
+                    "Company Overview: 4-7 sentences on business model, major segments/products, revenue drivers, competition, and strategy. "
+                    "Avoid boilerplate like 'based on the context'. Keep it professional and precise."
+                )
                 guided_query = (
-                    f"User asked about {ticker}. In a short, simple paragraph, explain what the company does, "
-                    f"and add any relevant context from the data and search results. Keep it non-technical.\n\n"
+                    f"{analysis_instructions}\n\n"
+                    f"Question: {query}"
+                )
+            else:
+                # Structured facts for initial or explicit-ticker questions
+                format_instructions = (
+                    "Return ONLY the following bullet list, nothing else. Use plain text (no italics, no bold, no underscores, no markdown).\n"
+                    "- Ticker: <ticker or N/A>\n"
+                    "- Company: <company name or N/A>\n"
+                    "- Company Info: <one short sentence describing what the company does>\n"
+                    "- As Of: <date (YYYYMMDD) or N/A>\n"
+                    "- Open: <open or N/A>\n"
+                    "- High: <high or N/A>\n"
+                    "- Low: <low or N/A>\n"
+                    "- Close: <close or N/A>\n"
+                    "- Volume: <volume or N/A>\n"
+                    "- Sources: Retrieved Stock Data; Search"
+                )
+                guided_query = (
+                    f"User asked about {ticker or 'a stock'}. Provide a concise, non-technical response grounded in the given data and search.\n"
+                    f"{format_instructions}\n\n"
                     f"Original user query: {query}"
                 )
 
@@ -223,13 +245,14 @@ class StockRAGChatbot:
                     ("Recent Conversation (last messages):\n" + history_context + "\n\n") if history_context else ""
                 ) + ("Retrieved Stock Data:\n" + context if context else "Retrieved Stock Data: None"),
                 search_results=search,
-                temperature=0.7
+                temperature=0.1
             )
-            
-            state['final_answer'] = response
+            # Sanitize any stray markdown characters and excessive whitespace
+            sanitized = self._sanitize_output(response)
+            state['final_answer'] = sanitized
             state['messages'] = state.get('messages', []) + [
                 HumanMessage(content=query),
-                AIMessage(content=response)
+                AIMessage(content=sanitized)
             ]
             
         except Exception as e:
@@ -354,6 +377,28 @@ class StockRAGChatbot:
 
         # Fallback to history
         return self._extract_ticker_from_history_text(history_text)
+    
+    def _sanitize_output(self, text: str) -> str:
+        """
+        Remove markdown italics/bold markers and fix accidental concatenations from formatting.
+        Keeps content as plain text.
+        """
+        if not text:
+            return text
+        # Remove *, _, **, __ while preserving numbers/letters
+        cleaned = re.sub(r"\*\*?", "", text)
+        # Replace underscores with spaces to prevent glued words
+        cleaned = re.sub(r"_+", " ", cleaned)
+        # Collapse multiple spaces/newlines
+        cleaned = re.sub(r"[ \t]+", " ", cleaned)
+        cleaned = re.sub(r"\s*\n\s*", "\n", cleaned)
+        # Ensure each bullet starts on new line with '- '
+        cleaned = re.sub(r"(?:^|\n)[\-\*]\s*", "\n- ", cleaned)
+        # Normalize spacing around punctuation
+        cleaned = re.sub(r"\s+,", ",", cleaned)
+        cleaned = re.sub(r"\s+\.", ".", cleaned)
+        cleaned = cleaned.strip()
+        return cleaned
     
     def get_conversation_history(self, state: AgentState) -> list:
         """

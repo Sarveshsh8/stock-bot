@@ -57,3 +57,4 @@ Thumbs.db
 # Stock Dataset (too large - don't push CSV files)
 stock_dataset/
 *.csv
+*.pem
