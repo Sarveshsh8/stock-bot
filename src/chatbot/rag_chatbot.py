@@ -1,4 +1,5 @@
 import os
+import json
 from typing import TypedDict, Annotated, Sequence, Optional, List, Dict
 import re
 from langchain.schema import HumanMessage, AIMessage, SystemMessage
@@ -198,44 +199,45 @@ class StockRAGChatbot:
         try:
             # Decide between structured fact response (first queries) and analytical follow-up
             explicit_ticker_in_query = bool(self._detect_ticker(query, ""))
-            # Bullet/structured mode only when explicitly requested
-            wants_structured = any(k in query.lower() for k in ["structured", "show bullets", "bullet", "table"])
+            # Structured mode only when explicitly requested (expanded keyword set)
+            wants_structured = any(k in query.lower() for k in [
+                "structured", "structure", "json", "dict", "dictionary", "schema", "table", "bullet", "show bullets"
+            ])
             # Default to analytical unless explicitly asking for structured
             follow_up = True if not wants_structured else False
 
             if follow_up:
-                # Analytical follow-up: multi-paragraph narrative, richer company overview
+                # Analytical follow-up: deeper, multi-section narrative with richer company overview
                 analysis_instructions = (
                     f"Provide a clear analysis of {ticker or 'the stock'} in plain text (no markdown, no italics, no bullets). "
-                    "Organize the response into four labeled sections, each as 1 short paragraph separated by a blank line: "
-                    "Summary: a direct answer to the question. "
-                    "Price & Levels: cite open/high/low/close with dates and infer likely support/resistance. "
-                    "Volume & Volatility: discuss intraday range vs average and notable volume context. "
-                    "Company Overview: 4-7 sentences on business model, major segments/products, revenue drivers, competition, and strategy. "
-                    "Avoid boilerplate like 'based on the context'. Keep it professional and precise."
+                    "Organize the response into SIX labeled sections, each as 3–6 sentences, separated by a blank line: "
+                    "Summary: a direct answer to the question, stating the key takeaway. "
+                    "Price & Levels: cite open/high/low/close with dates; discuss intraday range; infer likely support/resistance and what would invalidate them. "
+                    "Volume & Volatility: compare volume to typical context; comment on participation and volatility implications. "
+                    "Company Overview: 4–7 sentences on business model, major segments/products, revenue drivers, competition, and strategy. "
+                    "Risks & Catalysts: list near-term risks/catalysts relevant to the ticker (earnings, macro, product cycles) as full sentences. "
+                    "Outlook: what to watch next and how the above factors might shape near-term trajectory. "
+                    "Avoid boilerplate like 'based on the context'. Keep it professional and precise. Ensure proper spacing between all words."
                 )
                 guided_query = (
                     f"{analysis_instructions}\n\n"
                     f"Question: {query}"
                 )
             else:
-                # Structured facts for initial or explicit-ticker questions
-                format_instructions = (
-                    "Return ONLY the following bullet list, nothing else. Use plain text (no italics, no bold, no underscores, no markdown).\n"
-                    "- Ticker: <ticker or N/A>\n"
-                    "- Company: <company name or N/A>\n"
-                    "- Company Info: <one short sentence describing what the company does>\n"
-                    "- As Of: <date (YYYYMMDD) or N/A>\n"
-                    "- Open: <open or N/A>\n"
-                    "- High: <high or N/A>\n"
-                    "- Low: <low or N/A>\n"
-                    "- Close: <close or N/A>\n"
-                    "- Volume: <volume or N/A>\n"
-                    "- Sources: Retrieved Stock Data; Search"
+                # Structured JSON facts + brief analysis when explicitly requested
+                json_instructions = (
+                    "Output ONLY valid JSON (no commentary). Do not include markdown fences unless asked. "
+                    "Schema with required keys: {"
+                    "'ticker': string, 'as_of': string (YYYY-MM-DD or YYYYMMDD), "
+                    "'open': number, 'high': number, 'low': number, 'close': number, 'volume': number, 'intraday_range': number, "
+                    "'support_levels': [string], 'resistance_levels': [string], "
+                    "'trend_summary': string, 'momentum': string, 'volatility': string, 'volume_context': string, "
+                    "'company_overview': string (4-7 sentences), 'insights': [string], 'sources': [string] } "
+                    "Fill numeric fields with numbers, not strings. Keep strings concise but informative."
                 )
                 guided_query = (
-                    f"User asked about {ticker or 'a stock'}. Provide a concise, non-technical response grounded in the given data and search.\n"
-                    f"{format_instructions}\n\n"
+                    f"User requested structured analysis for {ticker or 'a stock'}. Provide deep but concise analysis following the schema.\n"
+                    f"{json_instructions}\n\n"
                     f"Original user query: {query}"
                 )
 
@@ -248,8 +250,15 @@ class StockRAGChatbot:
                 temperature=0.1
             )
             # Sanitize any stray markdown characters and excessive whitespace
-            sanitized = self._sanitize_output(response)
-            state['final_answer'] = sanitized
+            if wants_structured:
+                sanitized = self._sanitize_output_json(response)
+                # Wrap in code fence for safe rendering and readability
+                display = f"```json\n{sanitized}\n```" if sanitized and not sanitized.strip().startswith("```") else sanitized
+                state['final_answer'] = display
+            else:
+                sanitized = self._sanitize_output(response)
+                sanitized = self._ensure_section_breaks(sanitized)
+                state['final_answer'] = sanitized
             state['messages'] = state.get('messages', []) + [
                 HumanMessage(content=query),
                 AIMessage(content=sanitized)
@@ -391,7 +400,10 @@ class StockRAGChatbot:
         cleaned = re.sub(r"_+", " ", cleaned)
         # Collapse multiple spaces/newlines
         cleaned = re.sub(r"[ \t]+", " ", cleaned)
-        cleaned = re.sub(r"\s*\n\s*", "\n", cleaned)
+        # Preserve paragraph breaks: trim spaces around each newline but keep multiple newlines
+        cleaned = re.sub(r"[ \t]*\r?\n[ \t]*", "\n", cleaned)
+        # Collapse 3+ newlines to exactly two to create paragraph separation
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
         # Ensure each bullet starts on new line with '- '
         cleaned = re.sub(r"(?:^|\n)[\-\*]\s*", "\n- ", cleaned)
         # Normalize spacing around punctuation
@@ -399,6 +411,55 @@ class StockRAGChatbot:
         cleaned = re.sub(r"\s+\.", ".", cleaned)
         cleaned = cleaned.strip()
         return cleaned
+
+    def _ensure_section_breaks(self, text: str) -> str:
+        """
+        Ensure labeled sections start on new paragraphs with a blank line before each
+        (except the very first) for better readability in Streamlit markdown.
+        """
+        if not text:
+            return text
+        labels = [
+            "Summary:",
+            "Price & Levels:",
+            "Volume & Volatility:",
+            "Company Overview:",
+            "Risks & Catalysts:",
+            "Outlook:",
+        ]
+        formatted = text
+        for i, label in enumerate(labels):
+            # Add a blank line before each label (except the first) if missing
+            if i > 0:
+                formatted = re.sub(r"\s*" + re.escape(label), "\n\n" + label, formatted)
+        return formatted
+
+    def _sanitize_output_json(self, text: str) -> str:
+        """
+        Extract valid JSON object/array from a model response, fix minor trailing commas, and pretty print.
+        If parsing fails, return the plain sanitized text.
+        """
+        if not text:
+            return text
+        body = text.strip()
+        # Remove markdown code fences if present
+        if body.startswith("```"):
+            # take content between first and last fence
+            parts = body.split("```")
+            if len(parts) >= 3:
+                body = parts[1 if parts[1].strip() else 2]
+        # Heuristic: find first '{' or '[' and last '}' or ']'
+        start = min([i for i in [body.find('{'), body.find('[')] if i != -1] or [0])
+        end_curly = body.rfind('}')
+        end_brack = body.rfind(']')
+        end = max(end_curly, end_brack)
+        candidate = body[start:end+1] if end > start else body
+        try:
+            data = json.loads(candidate)
+            return json.dumps(data, indent=2, ensure_ascii=False)
+        except Exception:
+            # Fall back to plain sanitizer
+            return self._sanitize_output(text)
     
     def get_conversation_history(self, state: AgentState) -> list:
         """
