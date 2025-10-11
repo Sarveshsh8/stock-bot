@@ -36,11 +36,14 @@ PYTHON_VERSION="3.12"
 # Optional AWS provisioning
 CREATE_INSTANCE="false"
 AWS_REGION="us-east-1"
-INSTANCE_TYPE="t3.small"
+INSTANCE_TYPE="t3.medium"
 AMI_ID="" # if empty we try to resolve Ubuntu 22.04 latest via SSM
 KEY_NAME=""  # existing AWS key pair name (required when creating instance unless --import-key)
 IMPORT_KEY_FILE_PUB=""  # a local .pub file to import as AWS key pair (sets KEY_NAME automatically)
 SG_NAME="stock-bot-sg"
+VOLUME_SIZE="40"  # GiB for root volume
+TERMINATE_PREVIOUS="false"
+TAG_NAME="stock-bot"
 
 # Repo authentication / alternative local upload
 GIT_TOKEN=""
@@ -65,6 +68,9 @@ while [[ $# -gt 0 ]]; do
     --key-name) KEY_NAME="$2"; shift 2;;
     --import-key) IMPORT_KEY_FILE_PUB="$2"; shift 2;;
     --sg-name) SG_NAME="$2"; shift 2;;
+    --volume-size) VOLUME_SIZE="$2"; shift 2;;
+    --terminate-previous) TERMINATE_PREVIOUS="true"; shift 1;;
+    --tag-name) TAG_NAME="$2"; shift 2;;
     --git-token) GIT_TOKEN="$2"; shift 2;;
     --local-path) LOCAL_PATH="$2"; shift 2;;
     *) echo "Unknown arg: $1"; exit 1;;
@@ -90,6 +96,17 @@ if [[ "$CREATE_INSTANCE" == "true" ]]; then
   if [[ -z "$AMI_ID" ]]; then
     AMI_ID=$(aws ssm get-parameters --names "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id" --region "$AWS_REGION" --query 'Parameters[0].Value' --output text)
   fi
+  # Optionally terminate previous instances (tagged)
+  if [[ "$TERMINATE_PREVIOUS" == "true" ]]; then
+    OLD_IDS=$(aws ec2 describe-instances --region "$AWS_REGION" \
+      --filters "Name=tag:app,Values=$TAG_NAME" "Name=instance-state-name,Values=running,stopped,pending,stopping" \
+      --query 'Reservations[].Instances[].InstanceId' --output text 2>/dev/null || true)
+    if [[ -n "$OLD_IDS" && "$OLD_IDS" != "None" ]]; then
+      echo "  Terminating previous instances: $OLD_IDS"
+      aws ec2 terminate-instances --region "$AWS_REGION" --instance-ids $OLD_IDS >/dev/null || true
+      aws ec2 wait instance-terminated --region "$AWS_REGION" --instance-ids $OLD_IDS || true
+    fi
+  fi
   # Import key pair if requested
   if [[ -n "$IMPORT_KEY_FILE_PUB" ]]; then
     KEY_NAME="stock-bot-key-$(date +%s)"
@@ -108,9 +125,12 @@ if [[ "$CREATE_INSTANCE" == "true" ]]; then
       IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges='[{CidrIp=0.0.0.0/0,Description="HTTP"}]' \
       IpProtocol=tcp,FromPort=$PORT,ToPort=$PORT,IpRanges='[{CidrIp=0.0.0.0/0,Description="Streamlit"}]' >/dev/null
   fi
-  # Launch instance
+  # Launch instance with larger root volume and tags
   INSTANCE_ID=$(aws ec2 run-instances --region "$AWS_REGION" --image-id "$AMI_ID" --instance-type "$INSTANCE_TYPE" \
-    --key-name "$KEY_NAME" --security-group-ids "$SG_ID" --query 'Instances[0].InstanceId' --output text)
+    --key-name "$KEY_NAME" --security-group-ids "$SG_ID" \
+    --block-device-mappings '[{"DeviceName":"/dev/sda1","Ebs":{"VolumeSize":'$VOLUME_SIZE',"VolumeType":"gp3","DeleteOnTermination":true}}]' \
+    --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value='$TAG_NAME'},{Key=app,Value='$TAG_NAME'}]' \
+    --query 'Instances[0].InstanceId' --output text)
   echo "  Instance ID: $INSTANCE_ID (waiting for running state)"
   aws ec2 wait instance-running --region "$AWS_REGION" --instance-ids "$INSTANCE_ID"
   HOST=$(aws ec2 describe-instances --region "$AWS_REGION" --instance-ids "$INSTANCE_ID" --query 'Reservations[0].Instances[0].PublicDnsName' --output text)
@@ -134,7 +154,8 @@ echo "[2/6] Creating directories and fetching code..."
 
 if [[ -n "$LOCAL_PATH" ]]; then
   echo "  Uploading local source from $LOCAL_PATH ..."
-  TMP_TAR=$(mktemp /tmp/stockbot-src-XXXXXX.tgz)
+  TMP_TAR=$(mktemp -t stockbot-src.XXXXXX)
+  TMP_TAR="${TMP_TAR}.tgz"
   # Exclude large/unnecessary files from upload to accelerate deployment
   tar -czf "$TMP_TAR" \
     --exclude='.git' \
