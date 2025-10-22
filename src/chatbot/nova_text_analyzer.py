@@ -134,7 +134,9 @@ class NovaTextAnalyzer:
                              query: str,
                              retrieved_context: str,
                              search_results: str,
-                             temperature: float = 0.7) -> str:
+                             temperature: float = 0.2,
+                             system_prompt_override: Optional[str] = None,
+                             preface_instructions: Optional[str] = None) -> str:
         """
         Analyze stock market query with retrieved context.
         
@@ -158,13 +160,17 @@ class NovaTextAnalyzer:
         """
         try:
             # Create comprehensive prompt
-            system_prompt = """You are a helpful stock market assistant with expertise in financial analysis.
+            system_prompt = system_prompt_override or (
+                """You are a helpful stock market assistant with expertise in financial analysis.
 You have access to historical stock trading data and real-time search results.
 Provide accurate, comprehensive answers based on the provided context.
 Always cite your sources when using specific data points.
 If information is not available, clearly state so."""
+            )
             
-            user_prompt = f"""Question: {query}
+            preface = (preface_instructions + "\n\n") if preface_instructions else ""
+
+            user_prompt = f"""{preface}Question: {query}
 
 Historical Stock Data:
 {retrieved_context}

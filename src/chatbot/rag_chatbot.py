@@ -6,6 +6,10 @@ from langchain.schema import HumanMessage, AIMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 import operator
 from src.chatbot.nova_text_analyzer import NovaTextAnalyzer
+from src.prompts.wheel_strategy import (
+    get_system_prompt as get_wheel_system_prompt,
+    get_wheel_strategy_prompt,
+)
 
 
 class AgentState(TypedDict):
@@ -197,6 +201,15 @@ class StockRAGChatbot:
         
         # Use Nova Pro to generate response
         try:
+            # Detect intent for Wheel Strategy
+            ql = (query or "").lower()
+            wheel_keywords = [
+                "wheel strategy", "cash-secured put", "cash secured put", "covered call",
+                "sell put", "sell puts", "wheel analysis", "wheel entry", "wheel risk",
+                "performance tracking wheel", "wheel performance"
+            ]
+            is_wheel = any(k in ql for k in wheel_keywords)
+
             # Decide between structured fact response (first queries) and analytical follow-up
             explicit_ticker_in_query = bool(self._detect_ticker(query, ""))
             # Structured mode only when explicitly requested (expanded keyword set)
@@ -206,7 +219,35 @@ class StockRAGChatbot:
             # Default to analytical unless explicitly asking for structured
             follow_up = True if not wants_structured else False
 
-            if follow_up:
+            if is_wheel:
+                # Wheel Strategy path: use wheel prompts
+                wheel_section = get_wheel_strategy_prompt("analysis")
+                preface = (
+                    "You will analyze this query through the lens of the Wheel Strategy.\n"
+                    "Focus on suitability, entry via cash-secured puts, assignment handling, and covered calls.\n"
+                    "Use concrete strikes (5-15% OTM typical), expirations (30-45 DTE typical), and clear risk rules."
+                )
+                guided_query = (
+                    f"{wheel_section}\n\nQuestion: {query}"
+                )
+                response = self.nova.analyze_stock_context(
+                    query=guided_query,
+                    retrieved_context=(
+                        ("Recent Conversation (last messages):\n" + history_context + "\n\n") if history_context else ""
+                    ) + ("Retrieved Stock Data:\n" + context if context else "Retrieved Stock Data: None"),
+                    search_results=search,
+                    temperature=0.2,
+                    system_prompt_override=get_wheel_system_prompt(),
+                    preface_instructions=preface,
+                )
+                sanitized = self._sanitize_output(response)
+                sanitized = self._ensure_section_breaks(sanitized)
+                state['final_answer'] = sanitized
+                state['messages'] = state.get('messages', []) + [
+                    HumanMessage(content=query),
+                    AIMessage(content=sanitized)
+                ]
+            elif follow_up:
                 # Analytical follow-up: deeper, multi-section narrative with richer company overview
                 analysis_instructions = (
                     f"Provide a clear analysis of {ticker or 'the stock'} in plain text (no markdown, no italics, no bullets). "
@@ -295,7 +336,16 @@ class StockRAGChatbot:
             "how are you", "what's up", "howdy"
         ]
         uq_lower = user_query.strip().lower()
-        if any(phrase in uq_lower for phrase in casual_phrases) and not any(k in uq_lower for k in ["stock", "price", "company", "ticker"]):
+        # Word-boundary match to avoid matching 'hi' inside 'this'
+        is_casual = any(re.search(rf"\b{re.escape(p)}\b", uq_lower) for p in casual_phrases)
+        # Detect clear stock intent (keywords, options/wheel) or explicit ticker
+        has_stock_intent = any(k in uq_lower for k in [
+            "stock", "price", "company", "ticker", "options", "wheel", "cash-secured", "covered call", "put", "call"
+        ])
+        has_ticker = bool(self._detect_ticker(user_query, ""))
+        # Only treat as greeting if the message is short (<= 4 tokens)
+        tokens = re.findall(r"\b\w+\b", uq_lower)
+        if is_casual and len(tokens) <= 4 and not (has_stock_intent or has_ticker):
             return "Hi! How can I assist you with stocks today?"
 
         # Initialize state

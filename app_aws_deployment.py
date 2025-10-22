@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 import sys
 
 # Add src directory to path
@@ -17,7 +17,7 @@ from src.auth.dynamodb_auth import DynamoDBAuthService
 from src.chat_history.dynamodb_history import DynamoDBChatHistory
 
 # Load environment variables
-load_dotenv()
+load_dotenv(find_dotenv(), override=False)
 
 # Setup AWS credentials
 setup_aws_credentials()

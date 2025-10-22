@@ -4,10 +4,10 @@ Sets up AWS credentials and Bedrock configuration
 """
 
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(find_dotenv(), override=False)
 
 # AWS Configuration
 AWS_CONFIG = {

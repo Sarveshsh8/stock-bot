@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 import sys
 
 # Add src directory to path
@@ -14,7 +14,7 @@ from src.chatbot.rag_chatbot import StockRAGChatbot
 from config_aws import setup_aws_credentials
 
 # Load environment variables
-load_dotenv()
+load_dotenv(find_dotenv(), override=False)
 
 # Setup AWS credentials
 setup_aws_credentials()
