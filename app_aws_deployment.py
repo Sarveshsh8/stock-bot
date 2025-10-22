@@ -15,6 +15,7 @@ from config_aws import setup_aws_credentials
 from s3_faiss_manager import S3FAISSManager
 from src.auth.dynamodb_auth import DynamoDBAuthService
 from src.chat_history.dynamodb_history import DynamoDBChatHistory
+from src.auth.cognito_oauth import CognitoOAuth
 
 # Load environment variables
 load_dotenv(find_dotenv(), override=False)
@@ -44,6 +45,11 @@ if 'history' not in st.session_state:
     st.session_state.history = DynamoDBChatHistory()
 if 'session_id' not in st.session_state:
     st.session_state.session_id = None
+if 'oauth' not in st.session_state:
+    try:
+        st.session_state.oauth = CognitoOAuth()
+    except Exception:
+        st.session_state.oauth = None
 
 
 @st.cache_resource
@@ -162,6 +168,15 @@ def main():
             st.caption(f"Index: {_s3uri}")
         else:
             st.caption(f"Index: s3://{os.getenv('S3_BUCKET_NAME','')}/{os.getenv('S3_INDEX_KEY','faiss_index.tar.gz')}")
+        # OAuth login buttons
+        if st.session_state.oauth and not st.session_state.user_email:
+            if st.button("Login with Google/Microsoft"):
+                import uuid
+                state = uuid.uuid4().hex
+                st.session_state.oauth_state = state
+                auth_url = st.session_state.oauth.get_authorize_url(state=state)
+                st.markdown(f"[Continue to Sign In]({auth_url})")
+
         if st.session_state.user_email:
             st.caption(f"Signed in as {st.session_state.user_email}")
             if st.button("Logout"):
@@ -185,6 +200,33 @@ def main():
             st.error("Failed to initialize. Check configuration.")
             st.stop()
     
+    # Handle OAuth callback (authorization code in query params)
+    query_params = st.query_params if hasattr(st, 'query_params') else {}
+    code = query_params.get('code') if isinstance(query_params, dict) else None
+    state = query_params.get('state') if isinstance(query_params, dict) else None
+    if st.session_state.oauth and code:
+        try:
+            if state and state != st.session_state.get('oauth_state'):
+                st.error("Invalid OAuth state; please retry login.")
+            else:
+                tokens = st.session_state.oauth.exchange_code(code)
+                id_token = tokens.get('id_token')
+                if id_token:
+                    claims = st.session_state.oauth.verify_id_token(id_token)
+                    email = claims.get('email') or claims.get('cognito:username')
+                    if email:
+                        st.session_state.user_email = email
+                        import uuid
+                        st.session_state.session_id = uuid.uuid4().hex
+                        msgs = st.session_state.history.get_last_messages(email, session_id=st.session_state.session_id)
+                        st.session_state.messages = [{"role": m["role"], "content": m["content"]} for m in msgs]
+                        st.success("Logged in via OAuth. Loading chat...")
+                        st.experimental_rerun() if hasattr(st, 'experimental_rerun') else st.rerun()
+                else:
+                    st.error("OAuth token exchange failed: no id_token")
+        except Exception as e:
+            st.error(f"OAuth error: {e}")
+
     # Unified login page in main content when not logged in
     if st.session_state.user_email is None:
         st.title("Login")
